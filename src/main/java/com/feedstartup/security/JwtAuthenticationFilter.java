@@ -1,5 +1,6 @@
 package com.feedstartup.security;
 
+import com.feedstartup.service.SessionService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,6 +22,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private SessionService sessionService;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
@@ -28,16 +32,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String jwt = parseJwt(request);
             if (jwt != null && jwtUtil.validateToken(jwt)) {
-                String email = jwtUtil.extractEmail(jwt);
-                Long userId = jwtUtil.extractUserId(jwt);
+                String jti = jwtUtil.extractJti(jwt);
 
-                // Create an authentication token with email as principal and userId as credential/detail
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        email, userId, new ArrayList<>());
-                
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                // The JWT itself is long-lived; the UserSession row is the real source of truth for
+                // whether this device is still logged in (it's removed on logout or remote revoke).
+                if (sessionService.isActive(jti)) {
+                    String email = jwtUtil.extractEmail(jwt);
+                    Long userId = jwtUtil.extractUserId(jwt);
 
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                    // Create an authentication token with email as principal and userId as credential/detail
+                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                            email, userId, new ArrayList<>());
+
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    sessionService.touch(jti);
+                }
             }
         } catch (Exception e) {
             logger.error("Cannot set user authentication: {}", e);

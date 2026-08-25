@@ -29,8 +29,9 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/login", "/api/register").permitAll()
+                .requestMatchers("/api/login", "/api/login/**", "/api/register").permitAll()
                 .requestMatchers("/api/auth/**").authenticated()
+                .requestMatchers("/api/ers/**").authenticated()
                 .anyRequest().permitAll() // Permit other existing endpoints for backward compatibility
             );
 

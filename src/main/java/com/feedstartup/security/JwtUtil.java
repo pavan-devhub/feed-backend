@@ -21,7 +21,9 @@ public class JwtUtil {
     @Value("${jwt.secret:dGhpc2lzYXZlcnlzZWN1cmVzZWNyZXRrZXl0aGF0aXNsb25nZW5vdWdodG9iZXVzZWQ=}")
     private String secret;
 
-    @Value("${jwt.expiration:86400000}") // 1 day in ms
+    // Real session invalidation is handled by UserSession rows (see SessionService), so this is
+    // just a long-lived backstop, not the thing that decides whether a device is still logged in.
+    @Value("${jwt.expiration:15552000000}") // 180 days in ms
     private long expiration;
 
     private SecretKey getSigningKey() {
@@ -34,6 +36,10 @@ public class JwtUtil {
 
     public Long extractUserId(String token) {
         return extractClaim(token, claims -> claims.get("userId", Long.class));
+    }
+
+    public String extractJti(String token) {
+        return extractClaim(token, Claims::getId);
     }
 
     public Date extractExpiration(String token) {
@@ -57,17 +63,18 @@ public class JwtUtil {
         return extractExpiration(token).before(new Date());
     }
 
-    public String generateToken(User user) {
+    public String generateToken(User user, String jti) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", user.getId());
         claims.put("userType", user.getUserType());
-        return createToken(claims, user.getEmail());
+        return createToken(claims, user.getEmail(), jti);
     }
 
-    private String createToken(Map<String, Object> claims, String subject) {
+    private String createToken(Map<String, Object> claims, String subject, String jti) {
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(subject)
+                .setId(jti)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)

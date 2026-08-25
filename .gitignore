@@ -1,5 +1,8 @@
 HELP.md
 target/
+
+### Feed World publications storage (uploaded PDFs + generated thumbnails) ###
+storage/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
