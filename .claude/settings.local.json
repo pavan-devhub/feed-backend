@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(ls -la \"/c/Users/Pavan/feed\" 2>&1 | head -50)"
-    ]
-  }
-}
