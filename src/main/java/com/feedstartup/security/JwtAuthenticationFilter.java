@@ -64,6 +64,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return headerAuth.substring(7);
         }
 
+        // The publication PDF/thumbnail are loaded via plain <img>/<a>/pdf.js URLs (including
+        // byte-range requests pdf.js issues itself), none of which can attach an Authorization
+        // header, so those two routes alone also accept the JWT as a query parameter.
+        String uri = request.getRequestURI();
+        if (uri != null && uri.matches(".*/api/publications/\\d+/(file|thumbnail)$")) {
+            String tokenParam = request.getParameter("token");
+            if (StringUtils.hasText(tokenParam)) {
+                return tokenParam;
+            }
+        }
+
         return null;
     }
 }

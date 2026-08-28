@@ -23,6 +23,12 @@ import java.util.List;
 @CrossOrigin(origins = "*")
 public class PublicationController {
 
+    /**
+     * Content type used for the viewer stream only. Intentionally not application/pdf - see
+     * {@link #streamPdfForViewer}. The frontend re-labels the bytes as a PDF blob in the browser.
+     */
+    static final String VIEWER_STREAM_CONTENT_TYPE = "application/x-feedworld-publication";
+
     private final PublicationService publicationService;
 
     @Autowired
@@ -55,6 +61,14 @@ public class PublicationController {
         return ResponseEntity.ok(publicationService.getLatest());
     }
 
+    @GetMapping("/window")
+    public ResponseEntity<List<PublicationSummaryDto>> window(
+            @RequestParam Integer year,
+            @RequestParam Integer month,
+            @RequestParam(defaultValue = "12") int count) {
+        return ResponseEntity.ok(publicationService.getWindow(year, month, count));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<PublicationDetailDto> getById(@PathVariable Long id) {
         return ResponseEntity.ok(publicationService.getById(id));
@@ -70,6 +84,28 @@ public class PublicationController {
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
                 .header(HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
+                .body(file.resource());
+    }
+
+    /**
+     * The same bytes as {@link #streamPdf}, deliberately NOT advertised as application/pdf and
+     * carrying no Content-Disposition or filename. The in-page viewer fetches this with its own
+     * authenticated request and re-wraps the bytes as a PDF blob client-side.
+     *
+     * Why: a response typed application/pdf is capturable content. Download managers (IDM and
+     * friends) and "always download PDFs" browser settings grab it out from under the page -
+     * they cancel the page's own request, which surfaces in the viewer as "Failed to fetch",
+     * and raise their own save dialog. That is a download the user never asked for, on what was
+     * supposed to be a view. Bytes typed as something no capture list knows about stay inside
+     * the page. Downloading is unaffected: /{id}/file?download=true still serves a correct
+     * application/pdf attachment, and that click is the only way a file ever leaves the app.
+     */
+    @GetMapping("/{id}/stream")
+    public ResponseEntity<org.springframework.core.io.Resource> streamPdfForViewer(@PathVariable Long id) {
+        StoredFile file = publicationService.loadPdfFile(id);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(VIEWER_STREAM_CONTENT_TYPE))
+                .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
                 .body(file.resource());
     }
 

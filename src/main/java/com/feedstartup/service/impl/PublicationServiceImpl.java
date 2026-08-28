@@ -21,7 +21,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -62,9 +65,66 @@ public class PublicationServiceImpl implements PublicationService {
                     .map(PublicationSummaryDto::from)
                     .collect(Collectors.toList());
         }
+
+        // The archive search box is meant to be driven by "Month Year" (e.g. "August 2025", also
+        // accepting the abbreviated month name and either token order) so a reader can jump
+        // straight to one issue rather than hunting for it by title. Only a query where both a
+        // month and a year were recognised takes this path; anything else - including a bare
+        // year or a bare month name - falls through to the plain title search below.
+        int[] monthYear = parseMonthYear(query);
+        if (monthYear != null) {
+            return publicationRepository.findByYearAndMonth(monthYear[0], monthYear[1])
+                    .map(PublicationSummaryDto::from)
+                    .map(List::of)
+                    .orElseGet(List::of);
+        }
+
         return publicationRepository.findByTitleContainingIgnoreCaseOrderByYearDescMonthDesc(query).stream()
                 .map(PublicationSummaryDto::from)
                 .collect(Collectors.toList());
+    }
+
+    private static final Map<String, Integer> MONTH_NAME_TO_NUMBER = buildMonthNameMap();
+
+    private static Map<String, Integer> buildMonthNameMap() {
+        String[] fullNames = {
+                "january", "february", "march", "april", "may", "june",
+                "july", "august", "september", "october", "november", "december"
+        };
+        Map<String, Integer> map = new HashMap<>();
+        for (int i = 0; i < fullNames.length; i++) {
+            map.put(fullNames[i], i + 1);
+            map.put(fullNames[i].substring(0, 3), i + 1);
+        }
+        return map;
+    }
+
+    /**
+     * Recognises a "Month Year" search query in either token order (e.g. "August 2025" or
+     * "2025 August"), the abbreviated month name, or a numeric month/year pair separated by a
+     * space, slash or dash (e.g. "08/2025"). Returns {@code null} unless both a month and a
+     * 4-digit year were found, so a query naming only one of the two falls back to title search.
+     */
+    private static int[] parseMonthYear(String query) {
+        String normalized = query.trim().toLowerCase().replaceAll("[,/\\-]", " ").replaceAll("\\s+", " ");
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        Integer year = null;
+        Integer month = null;
+        for (String token : normalized.split(" ")) {
+            if (token.matches("\\d{4}")) {
+                year = Integer.parseInt(token);
+            } else if (MONTH_NAME_TO_NUMBER.containsKey(token)) {
+                month = MONTH_NAME_TO_NUMBER.get(token);
+            } else if (month == null && token.matches("\\d{1,2}")) {
+                int candidate = Integer.parseInt(token);
+                if (candidate >= 1 && candidate <= 12) {
+                    month = candidate;
+                }
+            }
+        }
+        return (year != null && month != null) ? new int[]{year, month} : null;
     }
 
     @Override
@@ -86,6 +146,21 @@ public class PublicationServiceImpl implements PublicationService {
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("No publications have been uploaded yet"));
         return PublicationDetailDto.from(latest);
+    }
+
+    @Override
+    public List<PublicationSummaryDto> getWindow(Integer year, Integer month, int count) {
+        int anchorIndex = year * 12 + (month - 1);
+        int yearEndIndex = year * 12 + 11;
+        int maxIndex = Math.min(yearEndIndex, anchorIndex + count);
+        return publicationRepository.findAllByOrderByYearDescMonthDesc().stream()
+                .filter(p -> {
+                    int index = p.getYear() * 12 + (p.getMonth() - 1);
+                    return index > anchorIndex && index <= maxIndex;
+                })
+                .sorted(Comparator.comparingInt(p -> p.getYear() * 12 + p.getMonth()))
+                .map(PublicationSummaryDto::from)
+                .collect(Collectors.toList());
     }
 
     @Override

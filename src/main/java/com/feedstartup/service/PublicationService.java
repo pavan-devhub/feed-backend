@@ -13,6 +13,11 @@ public interface PublicationService {
 
     List<PublicationSummaryDto> listByYear(Integer year);
 
+    /**
+     * Plain title search, except a query recognised as "Month Year" (either token order, full or
+     * abbreviated month name, e.g. "August 2025") instead resolves straight to that one issue -
+     * the archive search box is meant to jump to a specific issue by date, not just by title.
+     */
     List<PublicationSummaryDto> search(String query);
 
     PublicationDetailDto getById(Long id);
@@ -20,6 +25,15 @@ public interface PublicationService {
     PublicationDetailDto getByYearAndMonth(Integer year, Integer month);
 
     PublicationDetailDto getLatest();
+
+    /**
+     * The rolling archive window shown in the sidebar: up to {@code count} issues after (not
+     * including) the given year/month anchor, oldest first, never crossing into the next year -
+     * the window is clamped to December of the anchor year even if that means fewer than
+     * {@code count} results. Months in the window that have no uploaded issue are simply
+     * omitted rather than padded.
+     */
+    List<PublicationSummaryDto> getWindow(Integer year, Integer month, int count);
 
     StoredFile loadPdfFile(Long id);
 
