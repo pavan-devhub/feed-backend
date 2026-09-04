@@ -57,6 +57,8 @@ public class AuthController {
         response.put("lastName", user.getLastName());
         response.put("email", user.getEmail());
         response.put("userType", user.getUserType());
+        response.put("profileImageUrl", user.getProfileImagePath() != null
+                ? UserProfileController.profileImageUrl(user.getId()) : null);
 
         return ResponseEntity.ok(response);
     }

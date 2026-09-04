@@ -32,6 +32,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/login", "/api/login/**", "/api/register").permitAll()
                 .requestMatchers("/api/auth/**").authenticated()
                 .requestMatchers("/api/ers/**").authenticated()
+                // Uploading/removing your own profile picture requires auth; the GET that streams
+                // it back (/api/users/{id}/profile-image/file) is deliberately left public below.
+                .requestMatchers("/api/users/me/**").authenticated()
                 // Feed World publications (list/search/PDF/thumbnail) are only for logged-in
                 // users - login is compulsory to use this feature, not just a frontend prompt.
                 .requestMatchers("/api/publications/**").authenticated()

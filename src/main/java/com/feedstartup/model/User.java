@@ -49,7 +49,11 @@ public class User {
 
     @Column(nullable = false)
     private String userType;
-    
+
+    // Absolute/relative filesystem path to the stored profile picture, or null if the user
+    // hasn't uploaded one (the navbar falls back to showing their initial in that case).
+    private String profileImagePath;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
     
@@ -172,6 +176,14 @@ public class User {
 
     public void setUserType(String userType) {
         this.userType = userType;
+    }
+
+    public String getProfileImagePath() {
+        return profileImagePath;
+    }
+
+    public void setProfileImagePath(String profileImagePath) {
+        this.profileImagePath = profileImagePath;
     }
 
     public LocalDateTime getCreatedAt() {
