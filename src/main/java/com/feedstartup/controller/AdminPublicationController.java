@@ -55,7 +55,7 @@ public class AdminPublicationController {
     @PutMapping("/{id}")
     public ResponseEntity<?> update(
             @RequestHeader("X-Admin-Key") String providedKey,
-            @PathVariable Long id,
+            @PathVariable String id,
             @RequestParam(required = false) String title,
             @RequestParam(required = false) Integer volume,
             @RequestParam(required = false) Integer issueNumber) {
@@ -66,7 +66,7 @@ public class AdminPublicationController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@RequestHeader("X-Admin-Key") String providedKey, @PathVariable Long id) {
+    public ResponseEntity<?> delete(@RequestHeader("X-Admin-Key") String providedKey, @PathVariable String id) {
         ResponseEntity<?> denied = checkAdminKey(providedKey);
         if (denied != null) return denied;
 

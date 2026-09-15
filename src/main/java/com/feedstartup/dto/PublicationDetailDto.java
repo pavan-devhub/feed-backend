@@ -1,6 +1,6 @@
 package com.feedstartup.dto;
 
-import com.feedstartup.model.Publication;
+import com.feedstartup.model.PublicationMeta;
 
 import java.time.LocalDate;
 import java.time.Month;
@@ -10,7 +10,7 @@ import java.util.Locale;
 /** Full detail shape used once a specific issue is opened in the viewer. */
 public class PublicationDetailDto {
 
-    private Long id;
+    private String id;
     private String title;
     private Integer year;
     private Integer month;
@@ -23,24 +23,24 @@ public class PublicationDetailDto {
     private String pdfUrl;
     private Long fileSizeBytes;
 
-    public static PublicationDetailDto from(Publication p) {
+    public static PublicationDetailDto from(String id, Integer year, Integer month, PublicationMeta meta) {
         PublicationDetailDto dto = new PublicationDetailDto();
-        dto.id = p.getId();
-        dto.title = p.getTitle();
-        dto.year = p.getYear();
-        dto.month = p.getMonth();
-        dto.monthName = Month.of(p.getMonth()).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
-        dto.volume = p.getVolume();
-        dto.issueNumber = p.getIssueNumber();
-        dto.pageCount = p.getPageCount();
-        dto.publishedDate = p.getPublishedDate();
-        dto.thumbnailUrl = "/api/publications/" + p.getId() + "/thumbnail";
-        dto.pdfUrl = "/api/publications/" + p.getId() + "/file";
-        dto.fileSizeBytes = p.getFileSizeBytes();
+        dto.id = id;
+        dto.title = meta.getTitle();
+        dto.year = year;
+        dto.month = month;
+        dto.monthName = Month.of(month).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+        dto.volume = meta.getVolume();
+        dto.issueNumber = meta.getIssueNumber();
+        dto.pageCount = meta.getPageCount();
+        dto.publishedDate = meta.getPublishedDate();
+        dto.thumbnailUrl = "/api/publications/" + id + "/thumbnail";
+        dto.pdfUrl = "/api/publications/" + id + "/file";
+        dto.fileSizeBytes = meta.getFileSizeBytes();
         return dto;
     }
 
-    public Long getId() { return id; }
+    public String getId() { return id; }
     public String getTitle() { return title; }
     public Integer getYear() { return year; }
     public Integer getMonth() { return month; }

@@ -20,29 +20,30 @@ public interface PublicationService {
      */
     List<PublicationSummaryDto> search(String query);
 
-    PublicationDetailDto getById(Long id);
+    /** {@code id} is "{year}-{month}" with a zero-padded month, e.g. "2025-08" - see
+     * PublicationServiceImpl. */
+    PublicationDetailDto getById(String id);
 
     PublicationDetailDto getByYearAndMonth(Integer year, Integer month);
 
     PublicationDetailDto getLatest();
 
     /**
-     * The rolling archive window shown in the sidebar: up to {@code count} issues after (not
-     * including) the given year/month anchor, oldest first, never crossing into the next year -
-     * the window is clamped to December of the anchor year even if that means fewer than
-     * {@code count} results. Months in the window that have no uploaded issue are simply
-     * omitted rather than padded.
+     * The archive shown in the sidebar: every other issue published in the given anchor year
+     * (both earlier and later months), excluding the anchor month itself, ordered January to
+     * December and capped at {@code count} results. Never crosses into another year. Months
+     * with no uploaded issue are simply omitted rather than padded.
      */
     List<PublicationSummaryDto> getWindow(Integer year, Integer month, int count);
 
-    StoredFile loadPdfFile(Long id);
+    StoredFile loadPdfFile(String id);
 
-    StoredFile loadThumbnail(Long id);
+    StoredFile loadThumbnail(String id);
 
     PublicationDetailDto uploadPublication(MultipartFile file, String title, Integer year, Integer month,
                                             Integer volume, Integer issueNumber);
 
-    PublicationDetailDto updateMetadata(Long id, String title, Integer volume, Integer issueNumber);
+    PublicationDetailDto updateMetadata(String id, String title, Integer volume, Integer issueNumber);
 
-    void deletePublication(Long id);
+    void deletePublication(String id);
 }

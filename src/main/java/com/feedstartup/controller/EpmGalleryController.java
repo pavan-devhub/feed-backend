@@ -13,9 +13,9 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * Public endpoints backing the EPM gallery page. Every photo is admin-uploaded and streamed from
- * disk through this controller (see EpmGalleryServiceImpl) instead of pointing the page at
- * third-party stock photo URLs.
+ * Public endpoints backing the EPM gallery page. Every photo is admin-uploaded (or dropped
+ * straight into a block's folder - see EpmGalleryServiceImpl) and streamed from disk through this
+ * controller instead of pointing the page at third-party stock photo URLs.
  */
 @RestController
 @RequestMapping("/api/epm/gallery")
@@ -29,14 +29,21 @@ public class EpmGalleryController {
         this.epmGalleryService = epmGalleryService;
     }
 
+    /** Every photo across every block - used by the homepage teaser slider. */
     @GetMapping
     public ResponseEntity<List<EpmGalleryImageDto>> list() {
         return ResponseEntity.ok(epmGalleryService.list());
     }
 
-    @GetMapping("/{id}/file")
-    public ResponseEntity<Resource> streamImage(@PathVariable Long id) {
-        StoredFile file = epmGalleryService.loadImageFile(id);
+    /** Just the photos in one section's folder, e.g. "epm-moments" - see EpmGalleryBlock. */
+    @GetMapping("/{block}")
+    public ResponseEntity<List<EpmGalleryImageDto>> listByBlock(@PathVariable String block) {
+        return ResponseEntity.ok(epmGalleryService.listByBlock(block));
+    }
+
+    @GetMapping("/{block}/{id}/file")
+    public ResponseEntity<Resource> streamImage(@PathVariable String block, @PathVariable String id) {
+        StoredFile file = epmGalleryService.loadImageFile(block, id);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(file.contentType()))
                 .header(HttpHeaders.CACHE_CONTROL, "public, max-age=86400")

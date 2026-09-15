@@ -12,9 +12,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
 
 /**
- * Uploads/edits/removes EPM gallery photos. Gated behind the same shared admin key as
- * AdminPublicationController and AdminEpmEventController - see AdminPublicationController's
- * javadoc for why this is a header-key check rather than a full admin role.
+ * Uploads/edits/removes EPM gallery photos, scoped to one block (see EpmGalleryBlock) at a time.
+ * Gated behind the same shared admin key as AdminPublicationController and AdminEpmEventController
+ * - see AdminPublicationController's javadoc for why this is a header-key check rather than a
+ * full admin role.
  */
 @RestController
 @RequestMapping("/api/admin/epm/gallery")
@@ -31,9 +32,10 @@ public class AdminEpmGalleryController {
         this.epmGalleryService = epmGalleryService;
     }
 
-    @PostMapping(consumes = "multipart/form-data")
+    @PostMapping(value = "/{block}", consumes = "multipart/form-data")
     public ResponseEntity<?> upload(
             @RequestHeader("X-Admin-Key") String providedKey,
+            @PathVariable String block,
             @RequestParam("file") MultipartFile file,
             @RequestParam(required = false) String caption,
             @RequestParam(required = false) String city,
@@ -43,14 +45,15 @@ public class AdminEpmGalleryController {
         ResponseEntity<?> denied = checkAdminKey(providedKey);
         if (denied != null) return denied;
 
-        EpmGalleryImageDto created = epmGalleryService.upload(file, caption, city, state, featured, displayOrder);
+        EpmGalleryImageDto created = epmGalleryService.upload(block, file, caption, city, state, featured, displayOrder);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/{block}/{id}")
     public ResponseEntity<?> update(
             @RequestHeader("X-Admin-Key") String providedKey,
-            @PathVariable Long id,
+            @PathVariable String block,
+            @PathVariable String id,
             @RequestParam(required = false) String caption,
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String state,
@@ -59,15 +62,18 @@ public class AdminEpmGalleryController {
         ResponseEntity<?> denied = checkAdminKey(providedKey);
         if (denied != null) return denied;
 
-        return ResponseEntity.ok(epmGalleryService.updateMetadata(id, caption, city, state, featured, displayOrder));
+        return ResponseEntity.ok(epmGalleryService.updateMetadata(block, id, caption, city, state, featured, displayOrder));
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@RequestHeader("X-Admin-Key") String providedKey, @PathVariable Long id) {
+    @DeleteMapping("/{block}/{id}")
+    public ResponseEntity<?> delete(
+            @RequestHeader("X-Admin-Key") String providedKey,
+            @PathVariable String block,
+            @PathVariable String id) {
         ResponseEntity<?> denied = checkAdminKey(providedKey);
         if (denied != null) return denied;
 
-        epmGalleryService.delete(id);
+        epmGalleryService.delete(block, id);
         return ResponseEntity.noContent().build();
     }
 

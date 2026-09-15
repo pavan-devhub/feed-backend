@@ -1,6 +1,6 @@
 package com.feedstartup.dto;
 
-import com.feedstartup.model.Publication;
+import com.feedstartup.model.PublicationMeta;
 
 import java.time.LocalDate;
 import java.time.Month;
@@ -14,7 +14,7 @@ import java.util.Locale;
  */
 public class PublicationSummaryDto {
 
-    private Long id;
+    private String id;
     private String title;
     private Integer year;
     private Integer month;
@@ -23,20 +23,20 @@ public class PublicationSummaryDto {
     private String thumbnailUrl;
     private LocalDate publishedDate;
 
-    public static PublicationSummaryDto from(Publication p) {
+    public static PublicationSummaryDto from(String id, Integer year, Integer month, PublicationMeta meta) {
         PublicationSummaryDto dto = new PublicationSummaryDto();
-        dto.id = p.getId();
-        dto.title = p.getTitle();
-        dto.year = p.getYear();
-        dto.month = p.getMonth();
-        dto.monthName = Month.of(p.getMonth()).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
-        dto.pageCount = p.getPageCount();
-        dto.thumbnailUrl = "/api/publications/" + p.getId() + "/thumbnail";
-        dto.publishedDate = p.getPublishedDate();
+        dto.id = id;
+        dto.title = meta.getTitle();
+        dto.year = year;
+        dto.month = month;
+        dto.monthName = Month.of(month).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+        dto.pageCount = meta.getPageCount();
+        dto.thumbnailUrl = "/api/publications/" + id + "/thumbnail";
+        dto.publishedDate = meta.getPublishedDate();
         return dto;
     }
 
-    public Long getId() { return id; }
+    public String getId() { return id; }
     public String getTitle() { return title; }
     public Integer getYear() { return year; }
     public Integer getMonth() { return month; }

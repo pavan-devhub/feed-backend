@@ -70,13 +70,13 @@ public class PublicationController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<PublicationDetailDto> getById(@PathVariable Long id) {
+    public ResponseEntity<PublicationDetailDto> getById(@PathVariable String id) {
         return ResponseEntity.ok(publicationService.getById(id));
     }
 
     @GetMapping("/{id}/file")
     public ResponseEntity<org.springframework.core.io.Resource> streamPdf(
-            @PathVariable Long id,
+            @PathVariable String id,
             @RequestParam(defaultValue = "false") boolean download) {
         StoredFile file = publicationService.loadPdfFile(id);
         String disposition = (download ? "attachment" : "inline") + "; filename=\"" + file.filename() + "\"";
@@ -101,7 +101,7 @@ public class PublicationController {
      * application/pdf attachment, and that click is the only way a file ever leaves the app.
      */
     @GetMapping("/{id}/stream")
-    public ResponseEntity<org.springframework.core.io.Resource> streamPdfForViewer(@PathVariable Long id) {
+    public ResponseEntity<org.springframework.core.io.Resource> streamPdfForViewer(@PathVariable String id) {
         StoredFile file = publicationService.loadPdfFile(id);
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(VIEWER_STREAM_CONTENT_TYPE))
@@ -110,7 +110,7 @@ public class PublicationController {
     }
 
     @GetMapping("/{id}/thumbnail")
-    public ResponseEntity<org.springframework.core.io.Resource> streamThumbnail(@PathVariable Long id) {
+    public ResponseEntity<org.springframework.core.io.Resource> streamThumbnail(@PathVariable String id) {
         StoredFile file = publicationService.loadThumbnail(id);
         return ResponseEntity.ok()
                 .contentType(MediaType.IMAGE_PNG)
