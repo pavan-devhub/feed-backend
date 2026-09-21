@@ -8,9 +8,8 @@ import java.time.format.TextStyle;
 import java.util.Locale;
 
 /**
- * Lightweight shape used for archive lists (a whole year's worth of issues, search results, etc.)
- * Deliberately excludes the pdfUrl - the archive list only needs the cover thumbnail until a
- * specific issue is opened, which keeps the payload small when a year has many issues.
+ * Lightweight shape for archive lists (a year's issues, search results, etc). Excludes pdfUrl -
+ * list views only need the cover thumbnail.
  */
 public class PublicationSummaryDto {
 

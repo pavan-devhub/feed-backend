@@ -54,6 +54,11 @@ public class User {
     // hasn't uploaded one (the navbar falls back to showing their initial in that case).
     private String profileImagePath;
 
+    // Access-control role (ADMIN or USER), distinct from userType above. Left nullable so
+    // ddl-auto=update doesn't choke on rows created before this column existed; UserServiceImpl
+    // heals a null/stale role on every login.
+    private String role = "USER";
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
     
@@ -184,6 +189,14 @@ public class User {
 
     public void setProfileImagePath(String profileImagePath) {
         this.profileImagePath = profileImagePath;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 
     public LocalDateTime getCreatedAt() {

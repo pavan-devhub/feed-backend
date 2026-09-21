@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 
 /**
  * Metadata for one EPM gallery photo. Persisted as a JSON sidecar file next to the image itself
- * under {@code epm.storage.gallery-dir} (e.g. {@code <uuid>.jpg} + {@code <uuid>.json}) - there is
+ * under {@code epm.storage.gallery-dir} (e.g. {@code <uuid>.avif} + {@code <uuid>.json}) - there is
  * no database row for gallery images. The image's id and file extension come from the filename,
  * not from this class.
  */

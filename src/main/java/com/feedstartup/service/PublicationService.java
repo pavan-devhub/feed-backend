@@ -45,5 +45,11 @@ public interface PublicationService {
 
     PublicationDetailDto updateMetadata(String id, String title, Integer volume, Integer issueNumber);
 
+    /**
+     * Swaps the PDF (and regenerates the thumbnail/page count) for an existing publication,
+     * leaving its id, title, volume, issue number and publishedDate untouched.
+     */
+    PublicationDetailDto replacePdf(String id, MultipartFile file);
+
     void deletePublication(String id);
 }

@@ -26,19 +26,22 @@ import java.util.UUID;
 @Service
 public class UserServiceImpl implements UserService {
 
-    // Same defensive approach as EpmGalleryServiceImpl - the stored filename is always a fresh
-    // UUID, and the extension comes from the sniffed content type, never the client's filename.
+    // Stored filename is always a fresh UUID; extension comes from the sniffed content type.
     private static final Map<String, String> EXTENSION_BY_CONTENT_TYPE = Map.of(
             "image/jpeg", ".jpg",
             "image/png", ".png",
             "image/webp", ".webp",
-            "image/gif", ".gif"
+            "image/gif", ".gif",
+            "image/avif", ".avif"
     );
 
     private final UserRepository userRepository;
 
     @Value("${feedworld.storage.profile-images-dir}")
     private String profileImagesDir;
+
+    @Value("${feedworld.admin.email}")
+    private String adminEmail;
 
     @Autowired
     public UserServiceImpl(UserRepository userRepository) {
@@ -78,6 +81,7 @@ public class UserServiceImpl implements UserService {
         user.setDistrict(registrationDto.getDistrict());
         user.setCity(registrationDto.getCity());
         user.setUserType(registrationDto.getUserType());
+        user.setRole(resolveRole(registrationDto.getEmail()));
 
         return userRepository.save(user);
     }
@@ -91,7 +95,18 @@ public class UserServiceImpl implements UserService {
             throw new IllegalArgumentException("Invalid password");
         }
 
+        // Re-checked on every login so a role change (or a null from before this existed) heals.
+        String expectedRole = resolveRole(user.getEmail());
+        if (!expectedRole.equals(user.getRole())) {
+            user.setRole(expectedRole);
+            user = userRepository.save(user);
+        }
+
         return user;
+    }
+
+    private String resolveRole(String email) {
+        return email != null && email.equalsIgnoreCase(adminEmail) ? "ADMIN" : "USER";
     }
 
     @Override
@@ -171,6 +186,7 @@ public class UserServiceImpl implements UserService {
             case ".png" -> "image/png";
             case ".webp" -> "image/webp";
             case ".gif" -> "image/gif";
+            case ".avif" -> "image/avif";
             default -> "image/jpeg";
         };
     }

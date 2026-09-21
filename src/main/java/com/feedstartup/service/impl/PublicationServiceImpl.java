@@ -33,20 +33,18 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * No database is involved anywhere in here - the publication catalog IS the folder tree under
+ * No database - the publication catalog is the folder tree under
  * {@code feedworld.storage.base-dir}: {@code <year>/<month>/} holds one issue's PDF, cover
- * thumbnail, and a {@code meta.json} sidecar with its title/volume/issue number/page count/etc.
- * Listing, looking up, and deleting an issue all work by walking that tree - there is nothing
- * else to keep in sync. An issue's public id is its "{year}-{month}" folder path (e.g. "2025-08").
+ * thumbnail, and a {@code meta.json} sidecar. An issue's public id is its
+ * "{year}-{month}" path (e.g. "2025-08").
  */
 @Service
 public class PublicationServiceImpl implements PublicationService {
 
-    // Feed World only publishes for this rolling two-year window (mirrors the frontend's
-    // YEAR_OPTIONS in PublicationsHub.jsx) - reject anything outside it at upload time rather
-    // than letting stray years accumulate in storage.
+    // Reject years earlier than this at upload time. No fixed upper bound - maxAllowedYear()
+    // always allows a couple of years ahead of "today".
     private static final int MIN_YEAR = 2025;
-    private static final int MAX_YEAR = 2026;
+    private static final int YEARS_AHEAD_ALLOWED = 2;
 
     private static final String META_FILE = "meta.json";
 
@@ -211,7 +209,22 @@ public class PublicationServiceImpl implements PublicationService {
             throw new ResourceNotFoundException("Thumbnail file is missing on the server for publication " + id);
         }
         Resource resource = new FileSystemResource(path);
-        return new StoredFile(resource, "image/png", "cover-" + id + ".png");
+        String extension = extensionOf(thumbnailFile);
+        return new StoredFile(resource, contentTypeFor(extension), "cover-" + id + extension);
+    }
+
+    private static String extensionOf(String filename) {
+        int dot = filename.lastIndexOf('.');
+        return dot >= 0 ? filename.substring(dot) : "";
+    }
+
+    private static String contentTypeFor(String extension) {
+        return switch (extension.toLowerCase()) {
+            case ".avif" -> "image/avif";
+            case ".webp" -> "image/webp";
+            case ".jpg", ".jpeg" -> "image/jpeg";
+            default -> "image/png";
+        };
     }
 
     @Override
@@ -224,17 +237,16 @@ public class PublicationServiceImpl implements PublicationService {
         if (contentType == null || !contentType.equals("application/pdf")) {
             throw new IllegalArgumentException("Only PDF files are allowed");
         }
-        if (year == null || year < MIN_YEAR || year > MAX_YEAR) {
-            throw new IllegalArgumentException("Year must be " + MIN_YEAR + " or " + MAX_YEAR);
+        int maxYear = maxAllowedYear();
+        if (year == null || year < MIN_YEAR || year > maxYear) {
+            throw new IllegalArgumentException("Year must be between " + MIN_YEAR + " and " + maxYear);
         }
         if (month == null || month < 1 || month > 12) {
             throw new IllegalArgumentException("Month must be between 1 and 12");
         }
 
-        // storage/publications/<year>/<month>/<random-name>.{pdf,png} - one folder per calendar
-        // month so a year's twelve issues never share a directory with another year's, and the
-        // random name keeps a PDF's on-disk filename from leaking its title/date to anyone who
-        // gets a raw path.
+        // storage/publications/<year>/<month>/<random-name>.{pdf,png} - random name keeps the
+        // PDF's title/date off the raw path.
         Path monthDir = monthDir(year, month);
         Path metaPath = monthDir.resolve(META_FILE);
         if (Files.exists(metaPath)) {
@@ -292,6 +304,54 @@ public class PublicationServiceImpl implements PublicationService {
     }
 
     @Override
+    public PublicationDetailDto replacePdf(String id, MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("A PDF file is required");
+        }
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.equals("application/pdf")) {
+            throw new IllegalArgumentException("Only PDF files are allowed");
+        }
+
+        int[] ym = parseId(id);
+        Path monthDir = monthDir(ym[0], ym[1]);
+        Path metaPath = monthDir.resolve(META_FILE);
+        PublicationMeta meta = findEntryOrThrow(ym[0], ym[1], id).meta();
+
+        // Remove the old PDF/thumbnail before writing the new ones under fresh random names, so
+        // a replaced issue never leaves its previous files orphaned on disk.
+        if (meta.getPdfFile() != null) {
+            deleteQuietly(monthDir.resolve(meta.getPdfFile()));
+        }
+        if (meta.getThumbnailFile() != null) {
+            deleteQuietly(monthDir.resolve(meta.getThumbnailFile()));
+        }
+
+        String storedFileName = UUID.randomUUID().toString();
+        Path pdfTarget = monthDir.resolve(storedFileName + ".pdf");
+        Path thumbnailTarget = monthDir.resolve(storedFileName + ".png");
+
+        try {
+            file.transferTo(pdfTarget);
+
+            PdfProcessingService.PdfMetadata metadata = pdfProcessingService.process(pdfTarget, thumbnailTarget);
+
+            meta.setPageCount(metadata.pageCount());
+            meta.setPdfFile(pdfTarget.getFileName().toString());
+            meta.setThumbnailFile(Files.exists(thumbnailTarget) ? thumbnailTarget.getFileName().toString() : null);
+            meta.setFileSizeBytes(Files.size(pdfTarget));
+            meta.setUpdatedAt(LocalDateTime.now());
+
+            writeMeta(metaPath, meta);
+            return toDetail(new Entry(ym[0], ym[1], meta));
+        } catch (IOException e) {
+            deleteQuietly(pdfTarget);
+            deleteQuietly(thumbnailTarget);
+            throw new RuntimeException("Failed to replace the publication file: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
     public void deletePublication(String id) {
         int[] ym = parseId(id);
         Path monthDir = monthDir(ym[0], ym[1]);
@@ -337,6 +397,10 @@ public class PublicationServiceImpl implements PublicationService {
 
     private Path monthDir(int year, int month) {
         return Paths.get(baseDir, String.valueOf(year), String.format("%02d", month));
+    }
+
+    private static int maxAllowedYear() {
+        return LocalDate.now().getYear() + YEARS_AHEAD_ALLOWED;
     }
 
     private static List<Path> listSubdirectories(Path dir) {

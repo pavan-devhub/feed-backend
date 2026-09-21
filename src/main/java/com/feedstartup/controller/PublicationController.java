@@ -88,17 +88,10 @@ public class PublicationController {
     }
 
     /**
-     * The same bytes as {@link #streamPdf}, deliberately NOT advertised as application/pdf and
-     * carrying no Content-Disposition or filename. The in-page viewer fetches this with its own
-     * authenticated request and re-wraps the bytes as a PDF blob client-side.
-     *
-     * Why: a response typed application/pdf is capturable content. Download managers (IDM and
-     * friends) and "always download PDFs" browser settings grab it out from under the page -
-     * they cancel the page's own request, which surfaces in the viewer as "Failed to fetch",
-     * and raise their own save dialog. That is a download the user never asked for, on what was
-     * supposed to be a view. Bytes typed as something no capture list knows about stay inside
-     * the page. Downloading is unaffected: /{id}/file?download=true still serves a correct
-     * application/pdf attachment, and that click is the only way a file ever leaves the app.
+     * Same bytes as {@link #streamPdf} but not advertised as application/pdf, so download
+     * managers / "always download PDFs" settings don't intercept the viewer's own fetch. The
+     * viewer re-wraps the bytes as a PDF blob client-side. Actual downloads still go through
+     * /{id}/file?download=true with a proper application/pdf content type.
      */
     @GetMapping("/{id}/stream")
     public ResponseEntity<org.springframework.core.io.Resource> streamPdfForViewer(@PathVariable String id) {

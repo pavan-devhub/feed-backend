@@ -1,2 +1,12 @@
 # Claude Code - do not push
 .claude/
+
+# Build output
+target/
+
+# Eclipse / IDE metadata
+.classpath
+.project
+.settings/
+.idea/
+*.iml

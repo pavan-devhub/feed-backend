@@ -4,6 +4,7 @@ import com.feedstartup.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -32,13 +33,19 @@ public class SecurityConfig {
                 .requestMatchers("/api/login", "/api/login/**", "/api/register").permitAll()
                 .requestMatchers("/api/auth/**").authenticated()
                 .requestMatchers("/api/ers/**").authenticated()
-                // Uploading/removing your own profile picture requires auth; the GET that streams
-                // it back (/api/users/{id}/profile-image/file) is deliberately left public below.
+                // Profile-image GET stays public; only the upload/remove endpoints need auth.
                 .requestMatchers("/api/users/me/**").authenticated()
-                // Feed World publications (list/search/PDF/thumbnail) are only for logged-in
-                // users - login is compulsory to use this feature, not just a frontend prompt.
                 .requestMatchers("/api/publications/**").authenticated()
-                .anyRequest().permitAll() // Permit other existing endpoints for backward compatibility
+                // Per-user ADMIN role from the JWT, not the shared X-Admin-Key used elsewhere.
+                .requestMatchers("/api/admin/publications/**").hasRole("ADMIN")
+                .anyRequest().permitAll()
+            )
+            .exceptionHandling(ex -> ex
+                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                    response.setStatus(403);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.getWriter().write("{\"status\":\"error\",\"error\":\"Admin access required\"}");
+                })
             );
 
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

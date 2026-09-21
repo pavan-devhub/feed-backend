@@ -30,25 +30,22 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * No database is involved anywhere in here - the gallery IS the folder tree under
- * {@code epm.storage.gallery-dir}: one subfolder per {@link EpmGalleryBlock} (e.g.
- * {@code epm-moments/}), each holding its own {@code <uuid>.<ext>} photos with an optional
- * {@code <uuid>.json} sidecar for caption/city/state/featured/displayOrder. A photo dropped
- * straight into a block's folder - no upload API call, no sidecar needed - still shows up, using
- * filename/file-time-derived defaults (see readMeta). Listing, looking up, and deleting a photo
- * all work by scanning that block's directory - there is nothing else to keep in sync.
+ * No database - the gallery is the folder tree under {@code epm.storage.gallery-dir}: one
+ * subfolder per {@link EpmGalleryBlock}, each holding {@code <uuid>.<ext>} photos with an
+ * optional {@code <uuid>.json} sidecar for caption/city/state/featured/displayOrder. A photo
+ * dropped straight into a block's folder shows up too, using defaults from readMeta.
  */
 @Service
 public class EpmGalleryServiceImpl implements EpmGalleryService {
 
-    // Deliberately not trusting the client's original filename for the extension (or for
-    // anything else) - the stored name is always a fresh UUID, and the extension is derived from
-    // the sniffed content type instead, same defensive approach as PublicationServiceImpl.
+    // Stored name is always a fresh UUID; extension comes from the sniffed content type, not
+    // the client's filename.
     private static final Map<String, String> EXTENSION_BY_CONTENT_TYPE = Map.of(
             "image/jpeg", ".jpg",
             "image/png", ".png",
             "image/webp", ".webp",
-            "image/gif", ".gif"
+            "image/gif", ".gif",
+            "image/avif", ".avif"
     );
 
     private final ObjectMapper objectMapper;
@@ -252,6 +249,7 @@ public class EpmGalleryServiceImpl implements EpmGalleryService {
             case ".png" -> "image/png";
             case ".webp" -> "image/webp";
             case ".gif" -> "image/gif";
+            case ".avif" -> "image/avif";
             default -> "image/jpeg";
         };
     }
