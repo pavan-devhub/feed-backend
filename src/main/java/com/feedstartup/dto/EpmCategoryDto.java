@@ -3,19 +3,10 @@ package com.feedstartup.dto;
 import com.feedstartup.model.EpmCategory;
 
 /** Public read shape for a category option - backs the EPM details page's "Filter by Category"
- * sidebar so the list of categories is driven by the backend rather than hardcoded in the UI. */
-public class EpmCategoryDto {
-
-    private String id;
-    private String label;
+ * sidebar. {@code id} is the category's name, the same string stored on EpmEventDto#category. */
+public record EpmCategoryDto(String id, String label, String color) {
 
     public static EpmCategoryDto from(EpmCategory category) {
-        EpmCategoryDto dto = new EpmCategoryDto();
-        dto.id = category.getId();
-        dto.label = category.getLabel();
-        return dto;
+        return new EpmCategoryDto(category.getName(), category.getLabel(), category.getColor());
     }
-
-    public String getId() { return id; }
-    public String getLabel() { return label; }
 }

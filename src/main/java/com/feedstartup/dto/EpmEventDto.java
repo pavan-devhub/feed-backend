@@ -4,8 +4,9 @@ import com.feedstartup.model.EpmEvent;
 
 import java.time.LocalDate;
 
-/** Public read shape for an EpmEvent - powers the EPM page, details/filter screen, and the
- * location picker on the register/volunteer forms. */
+/** Public read shape for an EpmEvent - powers the EPM page, details/filter screen, the location
+ * picker on the register/volunteer forms, and the admin panel's event table. The two counts are
+ * only filled in by list views that ask for them (see EpmEventServiceImpl#withCounts). */
 public class EpmEventDto {
 
     private Long id;
@@ -17,8 +18,11 @@ public class EpmEventDto {
     private String venue;
     private LocalDate eventDate;
     private String timeRange;
+    private String description;
     private boolean upcoming;
     private boolean cancelled;
+    private Long registrationCount;
+    private Long volunteerCount;
 
     public static EpmEventDto from(EpmEvent e) {
         EpmEventDto dto = new EpmEventDto();
@@ -31,9 +35,16 @@ public class EpmEventDto {
         dto.venue = e.getVenue();
         dto.eventDate = e.getEventDate();
         dto.timeRange = e.getTimeRange();
+        dto.description = e.getDescription();
         dto.upcoming = e.getEventDate() != null && !e.getEventDate().isBefore(LocalDate.now());
         dto.cancelled = e.isCancelled();
         return dto;
+    }
+
+    public EpmEventDto withCounts(long registrations, long volunteers) {
+        this.registrationCount = registrations;
+        this.volunteerCount = volunteers;
+        return this;
     }
 
     public Long getId() { return id; }
@@ -45,6 +56,9 @@ public class EpmEventDto {
     public String getVenue() { return venue; }
     public LocalDate getEventDate() { return eventDate; }
     public String getTimeRange() { return timeRange; }
+    public String getDescription() { return description; }
     public boolean isUpcoming() { return upcoming; }
     public boolean isCancelled() { return cancelled; }
+    public Long getRegistrationCount() { return registrationCount; }
+    public Long getVolunteerCount() { return volunteerCount; }
 }

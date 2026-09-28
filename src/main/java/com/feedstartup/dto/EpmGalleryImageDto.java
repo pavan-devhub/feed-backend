@@ -2,40 +2,25 @@ package com.feedstartup.dto;
 
 import com.feedstartup.model.EpmGalleryImage;
 
-/** Public read shape for a gallery photo. The browser never sees the server-side disk path -
- * only the URL it can stream the bytes from, mirroring PublicationSummaryDto. {@code id} is the
- * image's filename stem (a UUID) and {@code block} is the EpmGalleryBlock folder it lives in -
- * neither is a database id, see EpmGalleryServiceImpl. */
-public class EpmGalleryImageDto {
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
-    private String id;
-    private String block;
-    private String imageUrl;
-    private String caption;
-    private String city;
-    private String state;
-    private boolean featured;
-    private Integer displayOrder;
+/** Read shape for one gallery image. The browser never sees the server-side disk path - only the
+ * URL it can stream the bytes from, mirroring PublicationSummaryDto. {@code imageUrl} carries a
+ * version parameter that changes whenever the file is replaced, so a cached copy is never shown
+ * after an admin swaps the picture. */
+public record EpmGalleryImageDto(Long id, String block, String imageUrl, String fileName, String caption,
+                                 String city, String state, boolean featured, Integer displayOrder,
+                                 Integer width, Integer height, Long fileSize, LocalDateTime createdAt) {
 
-    public static EpmGalleryImageDto from(String block, String id, EpmGalleryImage img) {
-        EpmGalleryImageDto dto = new EpmGalleryImageDto();
-        dto.id = id;
-        dto.block = block;
-        dto.imageUrl = "/api/epm/gallery/" + block + "/" + id + "/file";
-        dto.caption = img.getCaption();
-        dto.city = img.getCity();
-        dto.state = img.getState();
-        dto.featured = img.isFeatured();
-        dto.displayOrder = img.getDisplayOrder();
-        return dto;
+    public static EpmGalleryImageDto from(EpmGalleryImage img, String fileUrl) {
+        return new EpmGalleryImageDto(img.getId(), img.getBlock(), versioned(fileUrl, img), img.getFileName(),
+                img.getCaption(), img.getCity(), img.getState(), img.isFeatured(), img.getDisplayOrder(),
+                img.getWidth(), img.getHeight(), img.getFileSize(), img.getCreatedAt());
     }
 
-    public String getId() { return id; }
-    public String getBlock() { return block; }
-    public String getImageUrl() { return imageUrl; }
-    public String getCaption() { return caption; }
-    public String getCity() { return city; }
-    public String getState() { return state; }
-    public boolean isFeatured() { return featured; }
-    public Integer getDisplayOrder() { return displayOrder; }
+    public static String versioned(String fileUrl, EpmGalleryImage img) {
+        LocalDateTime stamp = img.getUpdatedAt() != null ? img.getUpdatedAt() : img.getCreatedAt();
+        return stamp == null ? fileUrl : fileUrl + "?v=" + stamp.toEpochSecond(ZoneOffset.UTC);
+    }
 }

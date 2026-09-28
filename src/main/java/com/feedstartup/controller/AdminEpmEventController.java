@@ -5,17 +5,15 @@ import com.feedstartup.dto.EpmEventRequestDto;
 import com.feedstartup.service.EpmEventService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
+import java.util.List;
 
 /**
- * Mutates the EPM event calendar (create/edit/remove a meeting), so it is gated behind the same
- * shared admin key as AdminPublicationController rather than a full admin role - see that
- * controller's javadoc for why.
+ * The EPM calendar - upcoming and previous meetings alike (whether an event is "upcoming" is just
+ * whether its date is today or later). Gated behind the ADMIN role in SecurityConfig.
  */
 @RestController
 @RequestMapping("/api/admin/epm/events")
@@ -24,48 +22,43 @@ public class AdminEpmEventController {
 
     private final EpmEventService epmEventService;
 
-    @Value("${feedworld.admin.upload-key}")
-    private String adminUploadKey;
-
     @Autowired
     public AdminEpmEventController(EpmEventService epmEventService) {
         this.epmEventService = epmEventService;
     }
 
-    @PostMapping(consumes = "application/json")
-    public ResponseEntity<?> create(@RequestHeader("X-Admin-Key") String providedKey,
-                                     @Valid @RequestBody EpmEventRequestDto dto) {
-        ResponseEntity<?> denied = checkAdminKey(providedKey);
-        if (denied != null) return denied;
+    /** Includes cancelled events, each with its registration and volunteer counts. */
+    @GetMapping
+    public ResponseEntity<List<EpmEventDto>> list(
+            @RequestParam(defaultValue = "upcoming") String status,
+            @RequestParam(name = "q", required = false) String query,
+            @RequestParam(required = false) String state,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Integer month,
+            @RequestParam(required = false) Integer year) {
+        return ResponseEntity.ok(epmEventService.adminList(status, query, state, district, city, category, month, year));
+    }
 
-        EpmEventDto created = epmEventService.create(dto);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    @GetMapping("/{id}")
+    public ResponseEntity<EpmEventDto> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(epmEventService.getById(id));
+    }
+
+    @PostMapping(consumes = "application/json")
+    public ResponseEntity<EpmEventDto> create(@Valid @RequestBody EpmEventRequestDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(epmEventService.create(dto));
     }
 
     @PutMapping(value = "/{id}", consumes = "application/json")
-    public ResponseEntity<?> update(@RequestHeader("X-Admin-Key") String providedKey,
-                                     @PathVariable Long id,
-                                     @Valid @RequestBody EpmEventRequestDto dto) {
-        ResponseEntity<?> denied = checkAdminKey(providedKey);
-        if (denied != null) return denied;
-
+    public ResponseEntity<EpmEventDto> update(@PathVariable Long id, @Valid @RequestBody EpmEventRequestDto dto) {
         return ResponseEntity.ok(epmEventService.update(id, dto));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@RequestHeader("X-Admin-Key") String providedKey, @PathVariable Long id) {
-        ResponseEntity<?> denied = checkAdminKey(providedKey);
-        if (denied != null) return denied;
-
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
         epmEventService.delete(id);
         return ResponseEntity.noContent().build();
-    }
-
-    private ResponseEntity<?> checkAdminKey(String providedKey) {
-        if (providedKey == null || !providedKey.equals(adminUploadKey)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("status", "error", "error", "Invalid or missing X-Admin-Key header"));
-        }
-        return null;
     }
 }

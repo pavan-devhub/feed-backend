@@ -11,8 +11,12 @@ import com.feedstartup.service.EpmRegistrationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class EpmRegistrationServiceImpl implements EpmRegistrationService {
@@ -55,10 +59,33 @@ public class EpmRegistrationServiceImpl implements EpmRegistrationService {
     }
 
     @Override
-    public List<EpmRegistrationDto> list(Long epmEventId) {
-        List<EpmRegistration> registrations = epmEventId != null
-                ? epmRegistrationRepository.findByEpmEventIdOrderByCreatedAtDesc(epmEventId)
-                : epmRegistrationRepository.findAllByOrderByCreatedAtDesc();
-        return registrations.stream().map(EpmRegistrationDto::from).collect(Collectors.toList());
+    public List<EpmRegistrationDto> list(Long epmEventId, LocalDate eventDate, LocalDate submittedOn, String query) {
+        // Narrow with the most selective indexed lookup available, then apply the rest in memory.
+        List<EpmRegistration> rows;
+        if (epmEventId != null) {
+            rows = epmRegistrationRepository.findByEpmEventIdOrderByCreatedAtDesc(epmEventId);
+        } else if (eventDate != null) {
+            rows = epmRegistrationRepository.findByEventDateOrderByCreatedAtDesc(eventDate);
+        } else if (submittedOn != null) {
+            rows = epmRegistrationRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                    submittedOn.atStartOfDay(), submittedOn.plusDays(1).atStartOfDay());
+        } else {
+            rows = epmRegistrationRepository.findAllByOrderByCreatedAtDesc();
+        }
+
+        Predicate<EpmRegistration> matches = r -> true;
+        if (eventDate != null) {
+            matches = matches.and(r -> eventDate.equals(r.getEventDate()));
+        }
+        if (submittedOn != null) {
+            matches = matches.and(r -> r.getCreatedAt() != null && submittedOn.equals(r.getCreatedAt().toLocalDate()));
+        }
+        if (query != null && !query.isBlank()) {
+            String q = query.trim().toLowerCase(Locale.ROOT);
+            matches = matches.and(r -> Stream.of(r.getFullName(), r.getMobileNumber(), r.getEmail(), r.getState(),
+                            r.getDistrict(), r.getEventCity())
+                    .anyMatch(v -> v != null && v.toLowerCase(Locale.ROOT).contains(q)));
+        }
+        return rows.stream().filter(matches).map(EpmRegistrationDto::from).collect(Collectors.toList());
     }
 }

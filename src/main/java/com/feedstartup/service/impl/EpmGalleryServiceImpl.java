@@ -1,151 +1,185 @@
 package com.feedstartup.service.impl;
 
+import com.feedstartup.dto.EpmGalleryBlockDto;
 import com.feedstartup.dto.EpmGalleryImageDto;
+import com.feedstartup.dto.EpmGalleryImageUpdateDto;
 import com.feedstartup.exception.ResourceNotFoundException;
 import com.feedstartup.model.EpmGalleryBlock;
 import com.feedstartup.model.EpmGalleryImage;
+import com.feedstartup.repository.EpmGalleryImageRepository;
 import com.feedstartup.service.EpmGalleryService;
+import com.feedstartup.service.EpmGalleryStorage;
 import com.feedstartup.service.StoredFile;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
- * No database - the gallery is the folder tree under {@code epm.storage.gallery-dir}: one
- * subfolder per {@link EpmGalleryBlock}, each holding {@code <uuid>.<ext>} photos with an
- * optional {@code <uuid>.json} sidecar for caption/city/state/featured/displayOrder. A photo
- * dropped straight into a block's folder shows up too, using defaults from readMeta.
+ * Database-backed block images: each row in epm_gallery_images names a file under
+ * {@code <gallery-dir>/<block>/}. District photos share the table (see EpmGalleryRegionServiceImpl)
+ * but are always excluded here by their non-null districtId.
  */
 @Service
 public class EpmGalleryServiceImpl implements EpmGalleryService {
 
-    // Stored name is always a fresh UUID; extension comes from the sniffed content type, not
-    // the client's filename.
-    private static final Map<String, String> EXTENSION_BY_CONTENT_TYPE = Map.of(
-            "image/jpeg", ".jpg",
-            "image/png", ".png",
-            "image/webp", ".webp",
-            "image/gif", ".gif",
-            "image/avif", ".avif"
-    );
+    // Lowest display order first; among equals, the newest upload first (the order the old
+    // folder-based gallery used, so imported photos keep their places).
+    private static final Comparator<EpmGalleryImage> DISPLAY_ORDER = Comparator
+            .comparingInt(EpmGalleryImage::getDisplayOrder)
+            .thenComparing(EpmGalleryImage::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+            .thenComparing(EpmGalleryImage::getId);
 
-    private final ObjectMapper objectMapper;
-
-    @Value("${epm.storage.gallery-dir}")
-    private String galleryDir;
+    private final EpmGalleryImageRepository imageRepository;
+    private final EpmGalleryStorage storage;
 
     @Autowired
-    public EpmGalleryServiceImpl(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    public EpmGalleryServiceImpl(EpmGalleryImageRepository imageRepository, EpmGalleryStorage storage) {
+        this.imageRepository = imageRepository;
+        this.storage = storage;
     }
 
     @Override
     public List<EpmGalleryImageDto> list() {
-        List<Entry> all = new ArrayList<>();
-        for (EpmGalleryBlock block : EpmGalleryBlock.values()) {
-            all.addAll(loadAll(block.getId()));
-        }
-        return sorted(all).stream().map(this::toDto).collect(Collectors.toList());
+        List<String> galleryBlocks = Arrays.stream(EpmGalleryBlock.values())
+                .filter(b -> b.getPage() == EpmGalleryBlock.Page.GALLERY_PAGE)
+                .map(EpmGalleryBlock::getId)
+                .toList();
+        return imageRepository.findByBlockInAndDistrictIdIsNull(galleryBlocks).stream()
+                .sorted(DISPLAY_ORDER)
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
     public List<EpmGalleryImageDto> listByBlock(String block) {
-        String blockId = requireBlock(block).getId();
-        return sorted(loadAll(blockId)).stream().map(this::toDto).collect(Collectors.toList());
+        return sortedIn(requireBlock(block)).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     @Override
+    public List<EpmGalleryBlockDto> listBlocks() {
+        return Arrays.stream(EpmGalleryBlock.values())
+                .map(b -> EpmGalleryBlockDto.from(b, imageRepository.countByBlockAndDistrictIdIsNull(b.getId())))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
     public EpmGalleryImageDto upload(String block, MultipartFile file, String caption, String city, String state,
-                                      boolean featured, Integer displayOrder) {
-        String blockId = requireBlock(block).getId();
-        if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("An image file is required");
-        }
-        String contentType = file.getContentType();
-        String extension = contentType == null ? null : EXTENSION_BY_CONTENT_TYPE.get(contentType.toLowerCase());
-        if (extension == null) {
-            throw new IllegalArgumentException("Only JPEG, PNG, WEBP or GIF images are allowed");
+                                     boolean featured, Integer displayOrder) {
+        EpmGalleryBlock target = requireBlock(block);
+        Integer max = target.getMaxImages();
+        if (max != null && imageRepository.countByBlockAndDistrictIdIsNull(target.getId()) >= max) {
+            throw new IllegalArgumentException("\"" + target.getLabel() + "\" holds at most " + max
+                    + (max == 1 ? " image" : " images") + " - replace or delete an existing one first");
         }
 
-        Path dir = blockDir(blockId);
-        String id = UUID.randomUUID().toString();
-        Path target = dir.resolve(id + extension);
+        Path dir = storage.blockDir(target.getId());
+        EpmGalleryStorage.StoredImage stored = storage.store(file, dir, null);
 
-        EpmGalleryImage meta = new EpmGalleryImage();
-        meta.setCaption(caption);
-        meta.setCity(city);
-        meta.setState(state);
-        meta.setFeatured(featured);
-        meta.setDisplayOrder(displayOrder != null ? displayOrder : 0);
-        meta.setCreatedAt(LocalDateTime.now());
-
+        EpmGalleryImage image = new EpmGalleryImage();
+        image.setBlock(target.getId());
+        applyStored(image, stored);
+        image.setCaption(blankToNull(caption));
+        image.setCity(blankToNull(city));
+        image.setState(blankToNull(state));
+        image.setFeatured(featured);
+        image.setDisplayOrder(displayOrder != null ? displayOrder : imageRepository.maxDisplayOrderInBlock(target.getId()) + 1);
         try {
-            Files.createDirectories(dir);
-            file.transferTo(target);
-            writeMeta(dir, id, meta);
-            return EpmGalleryImageDto.from(blockId, id, meta);
-        } catch (IOException e) {
-            deleteQuietly(target);
-            deleteQuietly(dir.resolve(id + ".json"));
-            throw new RuntimeException("Failed to store the gallery image: " + e.getMessage(), e);
+            return toDto(imageRepository.save(image));
+        } catch (RuntimeException e) {
+            storage.deleteQuietly(storage.child(dir, stored.fileName()));
+            throw e;
         }
     }
 
     @Override
-    public EpmGalleryImageDto updateMetadata(String block, String id, String caption, String city, String state,
-                                              Boolean featured, Integer displayOrder) {
-        String blockId = requireBlock(block).getId();
-        Path dir = blockDir(blockId);
-        Path imagePath = findImageFile(dir, id);
-        EpmGalleryImage meta = readMeta(dir, id, imagePath);
-        if (caption != null) meta.setCaption(caption);
-        if (city != null) meta.setCity(city);
-        if (state != null) meta.setState(state);
-        if (featured != null) meta.setFeatured(featured);
-        if (displayOrder != null) meta.setDisplayOrder(displayOrder);
-        writeMeta(dir, id, meta);
-        return EpmGalleryImageDto.from(blockId, id, meta);
+    @Transactional
+    public EpmGalleryImageDto updateMetadata(String block, Long id, EpmGalleryImageUpdateDto dto) {
+        EpmGalleryImage image = findOrThrow(requireBlock(block), id);
+        if (dto.caption() != null) image.setCaption(blankToNull(dto.caption()));
+        if (dto.city() != null) image.setCity(blankToNull(dto.city()));
+        if (dto.state() != null) image.setState(blankToNull(dto.state()));
+        if (dto.featured() != null) image.setFeatured(dto.featured());
+        if (dto.displayOrder() != null) image.setDisplayOrder(dto.displayOrder());
+        return toDto(imageRepository.save(image));
     }
 
     @Override
-    public StoredFile loadImageFile(String block, String id) {
-        String blockId = requireBlock(block).getId();
-        Path dir = blockDir(blockId);
-        Path path = findImageFile(dir, id);
-        Resource resource = new FileSystemResource(path);
-        String contentType = contentTypeFor(path.toString());
-        return new StoredFile(resource, contentType, "epm-" + blockId + "-" + id + extensionOf(path.toString()));
+    @Transactional
+    public EpmGalleryImageDto replaceFile(String block, Long id, MultipartFile file) {
+        EpmGalleryBlock target = requireBlock(block);
+        EpmGalleryImage image = findOrThrow(target, id);
+        Path dir = storage.blockDir(target.getId());
+        String oldFile = image.getFileName();
+
+        EpmGalleryStorage.StoredImage stored = storage.store(file, dir, null);
+        applyStored(image, stored);
+        EpmGalleryImage saved;
+        try {
+            saved = imageRepository.saveAndFlush(image);
+        } catch (RuntimeException e) {
+            storage.deleteQuietly(storage.child(dir, stored.fileName()));
+            throw e;
+        }
+        storage.deleteQuietly(storage.child(dir, oldFile));
+        return toDto(saved);
     }
 
     @Override
-    public void delete(String block, String id) {
-        String blockId = requireBlock(block).getId();
-        Path dir = blockDir(blockId);
-        Path imagePath = findImageFile(dir, id);
-        deleteQuietly(imagePath);
-        deleteQuietly(dir.resolve(id + ".json"));
+    @Transactional
+    public List<EpmGalleryImageDto> reorder(String block, List<Long> orderedIds) {
+        EpmGalleryBlock target = requireBlock(block);
+        Map<Long, EpmGalleryImage> byId = imageRepository.findByBlockAndDistrictIdIsNull(target.getId()).stream()
+                .collect(Collectors.toMap(EpmGalleryImage::getId, Function.identity()));
+        if (orderedIds == null || orderedIds.size() != byId.size() || !byId.keySet().equals(new HashSet<>(orderedIds))) {
+            throw new IllegalArgumentException("The new order must list every image in \"" + target.getLabel() + "\" exactly once");
+        }
+        for (int i = 0; i < orderedIds.size(); i++) {
+            byId.get(orderedIds.get(i)).setDisplayOrder(i);
+        }
+        imageRepository.saveAll(byId.values());
+        return listByBlock(target.getId());
     }
 
-    // --- folder scanning -------------------------------------------------------------------
+    @Override
+    public StoredFile loadImageFile(String block, Long id) {
+        EpmGalleryBlock target = requireBlock(block);
+        EpmGalleryImage image = findOrThrow(target, id);
+        return storage.load(storage.child(storage.blockDir(target.getId()), image.getFileName()), image.getContentType());
+    }
+
+    @Override
+    @Transactional
+    public void delete(String block, Long id) {
+        EpmGalleryBlock target = requireBlock(block);
+        EpmGalleryImage image = findOrThrow(target, id);
+        imageRepository.delete(image);
+        imageRepository.flush();
+        storage.deleteQuietly(storage.child(storage.blockDir(target.getId()), image.getFileName()));
+    }
+
+    // --- helpers ---------------------------------------------------------------------------
+
+    private List<EpmGalleryImage> sortedIn(EpmGalleryBlock block) {
+        return imageRepository.findByBlockAndDistrictIdIsNull(block.getId()).stream()
+                .sorted(DISPLAY_ORDER)
+                .collect(Collectors.toList());
+    }
+
+    private EpmGalleryImage findOrThrow(EpmGalleryBlock block, Long id) {
+        return imageRepository.findByIdAndBlockAndDistrictIdIsNull(id, block.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Gallery image not found: " + id));
+    }
 
     private static EpmGalleryBlock requireBlock(String block) {
         return EpmGalleryBlock.fromId(block)
@@ -153,114 +187,19 @@ public class EpmGalleryServiceImpl implements EpmGalleryService {
                         "Unknown gallery block \"" + block + "\" - must be one of: " + EpmGalleryBlock.allowedIdsJoined()));
     }
 
-    private Path blockDir(String blockId) {
-        return Paths.get(galleryDir, blockId);
+    private EpmGalleryImageDto toDto(EpmGalleryImage image) {
+        return EpmGalleryImageDto.from(image, "/api/epm/gallery/" + image.getBlock() + "/" + image.getId() + "/file");
     }
 
-    private List<Entry> loadAll(String blockId) {
-        Path dir = blockDir(blockId);
-        if (!Files.isDirectory(dir)) {
-            return List.of();
-        }
-        try (Stream<Path> paths = Files.list(dir)) {
-            return paths
-                    .filter(EpmGalleryServiceImpl::isImageFile)
-                    .map(p -> new Entry(blockId, idOf(p), readMeta(dir, idOf(p), p)))
-                    .collect(Collectors.toList());
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to list gallery images: " + e.getMessage(), e);
-        }
+    static void applyStored(EpmGalleryImage image, EpmGalleryStorage.StoredImage stored) {
+        image.setFileName(stored.fileName());
+        image.setContentType(stored.contentType());
+        image.setFileSize(stored.size());
+        image.setWidth(stored.width());
+        image.setHeight(stored.height());
     }
 
-    private static List<Entry> sorted(List<Entry> entries) {
-        return entries.stream()
-                .sorted(Comparator
-                        .comparingInt((Entry e) -> e.meta().getDisplayOrder())
-                        .thenComparing((Entry e) -> e.meta().getCreatedAt(), Comparator.reverseOrder()))
-                .collect(Collectors.toList());
+    static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
-
-    private EpmGalleryImageDto toDto(Entry e) {
-        return EpmGalleryImageDto.from(e.block(), e.id(), e.meta());
-    }
-
-    private Path findImageFile(Path dir, String id) {
-        if (Files.isDirectory(dir)) {
-            try (Stream<Path> paths = Files.list(dir)) {
-                return paths
-                        .filter(p -> isImageFile(p) && idOf(p).equals(id))
-                        .findFirst()
-                        .orElseThrow(() -> new ResourceNotFoundException("Gallery image not found: " + id));
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to look up gallery image: " + e.getMessage(), e);
-            }
-        }
-        throw new ResourceNotFoundException("Gallery image not found: " + id);
-    }
-
-    private EpmGalleryImage readMeta(Path dir, String id, Path imagePath) {
-        Path metaPath = dir.resolve(id + ".json");
-        if (Files.exists(metaPath)) {
-            try {
-                return objectMapper.readValue(metaPath.toFile(), EpmGalleryImage.class);
-            } catch (JacksonException ignored) {
-                // A corrupt/unreadable sidecar shouldn't break the whole gallery - fall back to
-                // defaults below instead of failing the request.
-            }
-        }
-        EpmGalleryImage fallback = new EpmGalleryImage();
-        try {
-            fallback.setCreatedAt(LocalDateTime.ofInstant(
-                    Files.getLastModifiedTime(imagePath).toInstant(), ZoneId.systemDefault()));
-        } catch (IOException ignored) {
-            fallback.setCreatedAt(LocalDateTime.now());
-        }
-        return fallback;
-    }
-
-    private void writeMeta(Path dir, String id, EpmGalleryImage meta) {
-        try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(dir.resolve(id + ".json").toFile(), meta);
-        } catch (JacksonException e) {
-            throw new RuntimeException("Failed to write gallery image metadata: " + e.getMessage(), e);
-        }
-    }
-
-    private static boolean isImageFile(Path p) {
-        if (!Files.isRegularFile(p)) return false;
-        String name = p.getFileName().toString().toLowerCase();
-        return EXTENSION_BY_CONTENT_TYPE.values().stream().anyMatch(name::endsWith);
-    }
-
-    private static String idOf(Path p) {
-        String filename = p.getFileName().toString();
-        int dot = filename.lastIndexOf('.');
-        return dot >= 0 ? filename.substring(0, dot) : filename;
-    }
-
-    private String extensionOf(String path) {
-        int dot = path.lastIndexOf('.');
-        return dot >= 0 ? path.substring(dot) : "";
-    }
-
-    private String contentTypeFor(String path) {
-        String ext = extensionOf(path).toLowerCase();
-        return switch (ext) {
-            case ".png" -> "image/png";
-            case ".webp" -> "image/webp";
-            case ".gif" -> "image/gif";
-            case ".avif" -> "image/avif";
-            default -> "image/jpeg";
-        };
-    }
-
-    private void deleteQuietly(Path path) {
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException ignored) {
-            // Best-effort cleanup; a leftover file on disk is not worth failing the request for.
-        }
-    }
-
-    private record Entry(String block, String id, EpmGalleryImage meta) {}
 }

@@ -4,7 +4,9 @@ import com.feedstartup.dto.PublicationDetailDto;
 import com.feedstartup.dto.PublicationSummaryDto;
 import com.feedstartup.dto.YearSummaryDto;
 import com.feedstartup.exception.ResourceNotFoundException;
-import com.feedstartup.model.PublicationMeta;
+import com.feedstartup.model.Publication;
+import com.feedstartup.model.PublicationLanguage;
+import com.feedstartup.repository.PublicationRepository;
 import com.feedstartup.service.PdfProcessingService;
 import com.feedstartup.service.PublicationService;
 import com.feedstartup.service.StoredFile;
@@ -14,29 +16,32 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
- * No database - the publication catalog is the folder tree under
- * {@code feedworld.storage.base-dir}: {@code <year>/<month>/} holds one issue's PDF, cover
- * thumbnail, and a {@code meta.json} sidecar. An issue's public id is its
- * "{year}-{month}" path (e.g. "2025-08").
+ * The publication catalog is the {@code publications} table (see {@link Publication} /
+ * {@link PublicationRepository}) - listing, search and lookups all query it directly. Every
+ * month has up to three rows, one per {@link PublicationLanguage} - English, Telugu and Hindi are
+ * separate PDFs, not one PDF with three translations. Each row's PDF and cover thumbnail are
+ * plain files on disk under {@code storage/publications/<year>/<language>/<month>/} (see
+ * {@code feedworld.storage.base-dir} and {@link #buildPublicationDir}) - language comes before
+ * month so each edition's files live in their own folder and Replace/Delete on one language can
+ * never touch another's; the row only stores their filenames, resolved against that folder
+ * whenever the PDF or thumbnail is actually fetched. An issue's public id is its
+ * "{year}-{month}-{language}" path (e.g. "2025-08-English"). Publications written before this
+ * layout existed (plain {@code <year>/<month>/}) are moved into place by
+ * {@link com.feedstartup.config.PublicationStorageMigrationRunner} on startup.
  */
 @Service
 public class PublicationServiceImpl implements PublicationService {
@@ -46,24 +51,22 @@ public class PublicationServiceImpl implements PublicationService {
     private static final int MIN_YEAR = 2025;
     private static final int YEARS_AHEAD_ALLOWED = 2;
 
-    private static final String META_FILE = "meta.json";
-
     private final PdfProcessingService pdfProcessingService;
-    private final ObjectMapper objectMapper;
+    private final PublicationRepository publicationRepository;
 
     @Value("${feedworld.storage.base-dir}")
     private String baseDir;
 
     @Autowired
-    public PublicationServiceImpl(PdfProcessingService pdfProcessingService, ObjectMapper objectMapper) {
+    public PublicationServiceImpl(PdfProcessingService pdfProcessingService, PublicationRepository publicationRepository) {
         this.pdfProcessingService = pdfProcessingService;
-        this.objectMapper = objectMapper;
+        this.publicationRepository = publicationRepository;
     }
 
     @Override
     public List<YearSummaryDto> listYears() {
-        Map<Integer, Long> counts = listAllEntries().stream()
-                .collect(Collectors.groupingBy(Entry::year, Collectors.counting()));
+        Map<Integer, Long> counts = publicationRepository.findAll().stream()
+                .collect(Collectors.groupingBy(Publication::getYear, Collectors.counting()));
         return counts.entrySet().stream()
                 .sorted(Map.Entry.<Integer, Long>comparingByKey().reversed())
                 .map(e -> new YearSummaryDto(e.getKey(), e.getValue()))
@@ -72,9 +75,8 @@ public class PublicationServiceImpl implements PublicationService {
 
     @Override
     public List<PublicationSummaryDto> listByYear(Integer year) {
-        return listAllEntries().stream()
-                .filter(e -> e.year().equals(year))
-                .sorted(Comparator.comparingInt(Entry::month).reversed())
+        return publicationRepository.findByYear(year).stream()
+                .sorted(byMonthDescThenLanguage())
                 .map(this::toSummary)
                 .collect(Collectors.toList());
     }
@@ -82,7 +84,7 @@ public class PublicationServiceImpl implements PublicationService {
     @Override
     public List<PublicationSummaryDto> search(String query) {
         if (query == null || query.isBlank()) {
-            return sortDesc(listAllEntries()).stream()
+            return sortDesc(publicationRepository.findAll()).stream()
                     .map(this::toSummary)
                     .collect(Collectors.toList());
         }
@@ -91,19 +93,17 @@ public class PublicationServiceImpl implements PublicationService {
         // accepting the abbreviated month name and either token order) so a reader can jump
         // straight to one issue rather than hunting for it by title. Only a query where both a
         // month and a year were recognised takes this path; anything else - including a bare
-        // year or a bare month name - falls through to the plain title search below.
+        // year or a bare month name - falls through to the plain title search below. A month/year
+        // match can return up to three rows (one per language).
         int[] monthYear = parseMonthYear(query);
         if (monthYear != null) {
-            return listAllEntries().stream()
-                    .filter(e -> e.year() == monthYear[0] && e.month() == monthYear[1])
-                    .findFirst()
-                    .map(e -> List.of(toSummary(e)))
-                    .orElseGet(List::of);
+            return publicationRepository.findByYearAndMonth(monthYear[0], monthYear[1]).stream()
+                    .sorted(Comparator.comparing(Publication::getLanguage))
+                    .map(this::toSummary)
+                    .collect(Collectors.toList());
         }
 
-        String needle = query.toLowerCase();
-        return sortDesc(listAllEntries()).stream()
-                .filter(e -> e.meta().getTitle() != null && e.meta().getTitle().toLowerCase().contains(needle))
+        return sortDesc(publicationRepository.findByTitleContainingIgnoreCase(query)).stream()
                 .map(this::toSummary)
                 .collect(Collectors.toList());
     }
@@ -153,28 +153,30 @@ public class PublicationServiceImpl implements PublicationService {
 
     @Override
     public PublicationDetailDto getById(String id) {
-        int[] ym = parseId(id);
-        return toDetail(findEntryOrThrow(ym[0], ym[1], id));
+        ParsedId parsed = parseId(id);
+        return toDetail(id, findEntityOrThrow(parsed, id));
     }
 
     @Override
-    public PublicationDetailDto getByYearAndMonth(Integer year, Integer month) {
-        return toDetail(findEntryOrThrow(year, month, year + "-" + month));
+    public PublicationDetailDto getByYearAndMonth(Integer year, Integer month, PublicationLanguage language) {
+        String id = idOf(year, month, language);
+        return toDetail(id, findEntityOrThrow(new ParsedId(year, month, language), id));
     }
 
     @Override
-    public PublicationDetailDto getLatest() {
-        Entry latest = sortDesc(listAllEntries()).stream()
+    public PublicationDetailDto getLatest(PublicationLanguage language) {
+        Publication latest = sortDesc(publicationRepository.findAll()).stream()
+                .filter(p -> p.getLanguage() == language)
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("No publications have been uploaded yet"));
-        return toDetail(latest);
+        return toDetail(idOf(latest.getYear(), latest.getMonth(), latest.getLanguage()), latest);
     }
 
     @Override
-    public List<PublicationSummaryDto> getWindow(Integer year, Integer month, int count) {
-        return listAllEntries().stream()
-                .filter(e -> e.year().equals(year) && !e.month().equals(month))
-                .sorted(Comparator.comparingInt(Entry::month))
+    public List<PublicationSummaryDto> getWindow(Integer year, Integer month, PublicationLanguage language, int count) {
+        return publicationRepository.findByYear(year).stream()
+                .filter(p -> p.getLanguage() == language && !p.getMonth().equals(month))
+                .sorted(Comparator.comparingInt(Publication::getMonth))
                 .limit(count)
                 .map(this::toSummary)
                 .collect(Collectors.toList());
@@ -182,29 +184,36 @@ public class PublicationServiceImpl implements PublicationService {
 
     @Override
     public StoredFile loadPdfFile(String id) {
-        int[] ym = parseId(id);
-        Entry entry = findEntryOrThrow(ym[0], ym[1], id);
-        String pdfFile = entry.meta().getPdfFile();
-        Path path = pdfFile == null ? null : monthDir(ym[0], ym[1]).resolve(pdfFile);
-        if (path == null || !Files.exists(path)) {
+        ParsedId parsed = parseId(id);
+        Publication publication = findEntityOrThrow(parsed, id);
+        Path path = buildPublicationDir(parsed.year(), parsed.language(), parsed.month()).resolve(publication.getPdfFile());
+        if (!Files.exists(path)) {
             throw new ResourceNotFoundException("PDF file is missing on the server for publication " + id);
         }
         Resource resource = new FileSystemResource(path);
-        String filename = entry.meta().getTitle().replaceAll("\\s+", "_")
-                + "_" + ym[0]
-                + "_" + String.format("%02d", ym[1]) + ".pdf";
-        return new StoredFile(resource, "application/pdf", filename);
+        return new StoredFile(resource, "application/pdf", downloadFilename(publication));
+    }
+
+    // Fixed "feedworld" prefix + that issue's own month/year/language, e.g.
+    // "feedworld_08_2025_english.pdf" - what the browser saves the file as, distinct from the
+    // random UUID name it is actually stored under on disk. The language suffix keeps the three
+    // editions of the same month from downloading over one another under the same name.
+    private static String downloadFilename(Publication publication) {
+        return "feedworld_" + String.format("%02d", publication.getMonth())
+                + "_" + publication.getYear()
+                + "_" + publication.getLanguage().name().toLowerCase()
+                + ".pdf";
     }
 
     @Override
     public StoredFile loadThumbnail(String id) {
-        int[] ym = parseId(id);
-        Entry entry = findEntryOrThrow(ym[0], ym[1], id);
-        String thumbnailFile = entry.meta().getThumbnailFile();
+        ParsedId parsed = parseId(id);
+        Publication publication = findEntityOrThrow(parsed, id);
+        String thumbnailFile = publication.getThumbnailFile();
         if (thumbnailFile == null) {
             throw new ResourceNotFoundException("No thumbnail available for publication " + id);
         }
-        Path path = monthDir(ym[0], ym[1]).resolve(thumbnailFile);
+        Path path = buildPublicationDir(parsed.year(), parsed.language(), parsed.month()).resolve(thumbnailFile);
         if (!Files.exists(path)) {
             throw new ResourceNotFoundException("Thumbnail file is missing on the server for publication " + id);
         }
@@ -229,7 +238,7 @@ public class PublicationServiceImpl implements PublicationService {
 
     @Override
     public PublicationDetailDto uploadPublication(MultipartFile file, String title, Integer year, Integer month,
-                                                    Integer volume, Integer issueNumber) {
+                                                    PublicationLanguage language, Integer volume, Integer issueNumber) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("A PDF file is required");
         }
@@ -244,39 +253,43 @@ public class PublicationServiceImpl implements PublicationService {
         if (month == null || month < 1 || month > 12) {
             throw new IllegalArgumentException("Month must be between 1 and 12");
         }
-
-        // storage/publications/<year>/<month>/<random-name>.{pdf,png} - random name keeps the
-        // PDF's title/date off the raw path.
-        Path monthDir = monthDir(year, month);
-        Path metaPath = monthDir.resolve(META_FILE);
-        if (Files.exists(metaPath)) {
-            throw new IllegalArgumentException("A publication for " + year + "-" + month + " already exists");
+        if (language == null) {
+            throw new IllegalArgumentException("Language is required");
+        }
+        if (publicationRepository.findByYearAndMonthAndLanguage(year, month, language).isPresent()) {
+            throw new IllegalArgumentException(
+                    "A " + language.name() + " publication for " + year + "-" + month + " already exists");
         }
 
+        // storage/publications/<year>/<language>/<month>/<random-name>.{pdf,png} - random name
+        // keeps the PDF's title/date off the raw path. Own folder per language so Replace/Delete
+        // on one edition never touches another's files.
+        Path publicationDir = buildPublicationDir(year, language, month);
         String storedFileName = UUID.randomUUID().toString();
-        Path pdfTarget = monthDir.resolve(storedFileName + ".pdf");
-        Path thumbnailTarget = monthDir.resolve(storedFileName + ".png");
+        Path pdfTarget = publicationDir.resolve(storedFileName + ".pdf");
+        Path thumbnailTarget = publicationDir.resolve(storedFileName + ".png");
 
         try {
-            Files.createDirectories(monthDir);
+            Files.createDirectories(publicationDir);
             file.transferTo(pdfTarget);
 
             PdfProcessingService.PdfMetadata metadata = pdfProcessingService.process(pdfTarget, thumbnailTarget);
 
-            PublicationMeta meta = new PublicationMeta();
-            meta.setTitle(title != null && !title.isBlank() ? title : "Feed World");
-            meta.setVolume(volume);
-            meta.setIssueNumber(issueNumber);
-            meta.setPageCount(metadata.pageCount());
-            meta.setPublishedDate(LocalDate.of(year, month, 1));
-            meta.setPdfFile(pdfTarget.getFileName().toString());
-            meta.setThumbnailFile(Files.exists(thumbnailTarget) ? thumbnailTarget.getFileName().toString() : null);
-            meta.setFileSizeBytes(Files.size(pdfTarget));
-            meta.setCreatedAt(LocalDateTime.now());
-            meta.setUpdatedAt(meta.getCreatedAt());
+            Publication publication = new Publication();
+            publication.setYear(year);
+            publication.setMonth(month);
+            publication.setLanguage(language);
+            publication.setTitle(title != null && !title.isBlank() ? title : "Feed World");
+            publication.setVolume(volume);
+            publication.setIssueNumber(issueNumber);
+            publication.setPageCount(metadata.pageCount());
+            publication.setPublishedDate(LocalDate.of(year, month, 1));
+            publication.setPdfFile(pdfTarget.getFileName().toString());
+            publication.setThumbnailFile(Files.exists(thumbnailTarget) ? thumbnailTarget.getFileName().toString() : null);
+            publication.setFileSizeBytes(Files.size(pdfTarget));
 
-            writeMeta(metaPath, meta);
-            return toDetail(new Entry(year, month, meta));
+            publication = publicationRepository.save(publication);
+            return toDetail(idOf(year, month, language), publication);
         } catch (IOException e) {
             deleteQuietly(pdfTarget);
             deleteQuietly(thumbnailTarget);
@@ -286,21 +299,19 @@ public class PublicationServiceImpl implements PublicationService {
 
     @Override
     public PublicationDetailDto updateMetadata(String id, String title, Integer volume, Integer issueNumber) {
-        int[] ym = parseId(id);
-        Path metaPath = monthDir(ym[0], ym[1]).resolve(META_FILE);
-        PublicationMeta meta = findEntryOrThrow(ym[0], ym[1], id).meta();
+        ParsedId parsed = parseId(id);
+        Publication publication = findEntityOrThrow(parsed, id);
         if (title != null && !title.isBlank()) {
-            meta.setTitle(title);
+            publication.setTitle(title);
         }
         if (volume != null) {
-            meta.setVolume(volume);
+            publication.setVolume(volume);
         }
         if (issueNumber != null) {
-            meta.setIssueNumber(issueNumber);
+            publication.setIssueNumber(issueNumber);
         }
-        meta.setUpdatedAt(LocalDateTime.now());
-        writeMeta(metaPath, meta);
-        return toDetail(new Entry(ym[0], ym[1], meta));
+        publication = publicationRepository.save(publication);
+        return toDetail(id, publication);
     }
 
     @Override
@@ -313,37 +324,37 @@ public class PublicationServiceImpl implements PublicationService {
             throw new IllegalArgumentException("Only PDF files are allowed");
         }
 
-        int[] ym = parseId(id);
-        Path monthDir = monthDir(ym[0], ym[1]);
-        Path metaPath = monthDir.resolve(META_FILE);
-        PublicationMeta meta = findEntryOrThrow(ym[0], ym[1], id).meta();
+        ParsedId parsed = parseId(id);
+        Publication publication = findEntityOrThrow(parsed, id);
+        Path publicationDir = buildPublicationDir(parsed.year(), publication.getLanguage(), parsed.month());
 
         // Remove the old PDF/thumbnail before writing the new ones under fresh random names, so
-        // a replaced issue never leaves its previous files orphaned on disk.
-        if (meta.getPdfFile() != null) {
-            deleteQuietly(monthDir.resolve(meta.getPdfFile()));
+        // a replaced issue never leaves its previous files orphaned on disk. Only this language's
+        // folder is touched - the other editions' files live in their own language folder.
+        if (publication.getPdfFile() != null) {
+            deleteQuietly(publicationDir.resolve(publication.getPdfFile()));
         }
-        if (meta.getThumbnailFile() != null) {
-            deleteQuietly(monthDir.resolve(meta.getThumbnailFile()));
+        if (publication.getThumbnailFile() != null) {
+            deleteQuietly(publicationDir.resolve(publication.getThumbnailFile()));
         }
 
         String storedFileName = UUID.randomUUID().toString();
-        Path pdfTarget = monthDir.resolve(storedFileName + ".pdf");
-        Path thumbnailTarget = monthDir.resolve(storedFileName + ".png");
+        Path pdfTarget = publicationDir.resolve(storedFileName + ".pdf");
+        Path thumbnailTarget = publicationDir.resolve(storedFileName + ".png");
 
         try {
+            Files.createDirectories(publicationDir);
             file.transferTo(pdfTarget);
 
             PdfProcessingService.PdfMetadata metadata = pdfProcessingService.process(pdfTarget, thumbnailTarget);
 
-            meta.setPageCount(metadata.pageCount());
-            meta.setPdfFile(pdfTarget.getFileName().toString());
-            meta.setThumbnailFile(Files.exists(thumbnailTarget) ? thumbnailTarget.getFileName().toString() : null);
-            meta.setFileSizeBytes(Files.size(pdfTarget));
-            meta.setUpdatedAt(LocalDateTime.now());
+            publication.setPageCount(metadata.pageCount());
+            publication.setPdfFile(pdfTarget.getFileName().toString());
+            publication.setThumbnailFile(Files.exists(thumbnailTarget) ? thumbnailTarget.getFileName().toString() : null);
+            publication.setFileSizeBytes(Files.size(pdfTarget));
 
-            writeMeta(metaPath, meta);
-            return toDetail(new Entry(ym[0], ym[1], meta));
+            publication = publicationRepository.save(publication);
+            return toDetail(id, publication);
         } catch (IOException e) {
             deleteQuietly(pdfTarget);
             deleteQuietly(thumbnailTarget);
@@ -353,87 +364,60 @@ public class PublicationServiceImpl implements PublicationService {
 
     @Override
     public void deletePublication(String id) {
-        int[] ym = parseId(id);
-        Path monthDir = monthDir(ym[0], ym[1]);
-        Entry entry = findEntryOrThrow(ym[0], ym[1], id);
-        if (entry.meta().getPdfFile() != null) {
-            deleteQuietly(monthDir.resolve(entry.meta().getPdfFile()));
+        ParsedId parsed = parseId(id);
+        Publication publication = findEntityOrThrow(parsed, id);
+        Path publicationDir = buildPublicationDir(parsed.year(), publication.getLanguage(), parsed.month());
+        if (publication.getPdfFile() != null) {
+            deleteQuietly(publicationDir.resolve(publication.getPdfFile()));
         }
-        if (entry.meta().getThumbnailFile() != null) {
-            deleteQuietly(monthDir.resolve(entry.meta().getThumbnailFile()));
+        if (publication.getThumbnailFile() != null) {
+            deleteQuietly(publicationDir.resolve(publication.getThumbnailFile()));
         }
-        deleteQuietly(monthDir.resolve(META_FILE));
+        publicationRepository.delete(publication);
     }
 
-    // --- folder-tree scanning -------------------------------------------------------------
-
-    private List<Entry> listAllEntries() {
-        Path base = Paths.get(baseDir);
-        if (!Files.isDirectory(base)) {
-            return List.of();
-        }
-        List<Entry> entries = new ArrayList<>();
-        for (Path yearDir : listSubdirectories(base)) {
-            Integer year = parseIntOrNull(yearDir.getFileName().toString());
-            if (year == null) continue;
-            for (Path monthDir : listSubdirectories(yearDir)) {
-                Integer month = parseIntOrNull(monthDir.getFileName().toString());
-                if (month == null) continue;
-                Path metaPath = monthDir.resolve(META_FILE);
-                if (!Files.exists(metaPath)) continue;
-                entries.add(new Entry(year, month, readMeta(metaPath)));
-            }
-        }
-        return entries;
+    private Publication findEntityOrThrow(ParsedId parsed, String id) {
+        return publicationRepository.findByYearAndMonthAndLanguage(parsed.year(), parsed.month(), parsed.language())
+                .orElseThrow(() -> new ResourceNotFoundException("No publication found for " + id));
     }
 
-    private Entry findEntryOrThrow(int year, int month, String id) {
-        Path metaPath = monthDir(year, month).resolve(META_FILE);
-        if (!Files.exists(metaPath)) {
-            throw new ResourceNotFoundException("No publication found for " + id);
-        }
-        return new Entry(year, month, readMeta(metaPath));
-    }
-
-    private Path monthDir(int year, int month) {
-        return Paths.get(baseDir, String.valueOf(year), String.format("%02d", month));
+    /**
+     * The one place that turns (year, language, month) into a filesystem folder - every
+     * upload/replace/delete/view/download/thumbnail path above resolves its files through this
+     * method rather than building the path inline, so the on-disk layout only has one definition.
+     */
+    private Path buildPublicationDir(int year, PublicationLanguage language, int month) {
+        return Paths.get(baseDir, String.valueOf(year), language.name().toLowerCase(), String.format("%02d", month));
     }
 
     private static int maxAllowedYear() {
         return LocalDate.now().getYear() + YEARS_AHEAD_ALLOWED;
     }
 
-    private static List<Path> listSubdirectories(Path dir) {
-        try (Stream<Path> stream = Files.list(dir)) {
-            return stream.filter(Files::isDirectory)
-                    .sorted()
-                    .collect(Collectors.toList());
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to list " + dir + ": " + e.getMessage(), e);
-        }
-    }
-
-    private static List<Entry> sortDesc(List<Entry> entries) {
+    private static List<Publication> sortDesc(List<Publication> entries) {
         return entries.stream()
-                .sorted(Comparator.comparingInt(Entry::year).thenComparingInt(Entry::month).reversed())
+                .sorted(Comparator.comparingInt(Publication::getYear).thenComparingInt(Publication::getMonth).reversed())
                 .collect(Collectors.toList());
     }
 
-    private static Integer parseIntOrNull(String s) {
-        try {
-            return Integer.parseInt(s);
-        } catch (NumberFormatException e) {
-            return null;
-        }
+    private static Comparator<Publication> byMonthDescThenLanguage() {
+        return Comparator.comparingInt(Publication::getMonth).reversed()
+                .thenComparing(Publication::getLanguage);
     }
 
-    private static int[] parseId(String id) {
+    /** {@code id} is "{year}-{month}-{language}", e.g. "2025-08-English" - see class javadoc. */
+    private record ParsedId(int year, int month, PublicationLanguage language) {}
+
+    private static ParsedId parseId(String id) {
         if (id != null) {
             String[] parts = id.split("-");
-            if (parts.length == 2) {
+            if (parts.length == 3) {
                 try {
-                    return new int[]{Integer.parseInt(parts[0]), Integer.parseInt(parts[1])};
-                } catch (NumberFormatException ignored) {
+                    int year = Integer.parseInt(parts[0]);
+                    int month = Integer.parseInt(parts[1]);
+                    PublicationLanguage language = PublicationLanguage.valueOf(parts[2]);
+                    return new ParsedId(year, month, language);
+                } catch (IllegalArgumentException ignored) {
                     // falls through to the exception below
                 }
             }
@@ -441,32 +425,16 @@ public class PublicationServiceImpl implements PublicationService {
         throw new ResourceNotFoundException("Publication not found: " + id);
     }
 
-    private static String idOf(int year, int month) {
-        return year + "-" + String.format("%02d", month);
+    private static String idOf(int year, int month, PublicationLanguage language) {
+        return year + "-" + String.format("%02d", month) + "-" + language.name();
     }
 
-    private PublicationSummaryDto toSummary(Entry e) {
-        return PublicationSummaryDto.from(idOf(e.year(), e.month()), e.year(), e.month(), e.meta());
+    private PublicationSummaryDto toSummary(Publication p) {
+        return PublicationSummaryDto.from(idOf(p.getYear(), p.getMonth(), p.getLanguage()), p);
     }
 
-    private PublicationDetailDto toDetail(Entry e) {
-        return PublicationDetailDto.from(idOf(e.year(), e.month()), e.year(), e.month(), e.meta());
-    }
-
-    private PublicationMeta readMeta(Path metaPath) {
-        try {
-            return objectMapper.readValue(metaPath.toFile(), PublicationMeta.class);
-        } catch (JacksonException e) {
-            throw new RuntimeException("Failed to read publication metadata at " + metaPath + ": " + e.getMessage(), e);
-        }
-    }
-
-    private void writeMeta(Path metaPath, PublicationMeta meta) {
-        try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(metaPath.toFile(), meta);
-        } catch (JacksonException e) {
-            throw new RuntimeException("Failed to write publication metadata: " + e.getMessage(), e);
-        }
+    private PublicationDetailDto toDetail(String id, Publication p) {
+        return PublicationDetailDto.from(id, p);
     }
 
     private void deleteQuietly(Path path) {
@@ -476,6 +444,4 @@ public class PublicationServiceImpl implements PublicationService {
             // Best-effort cleanup; a leftover file on disk is not worth failing the request for.
         }
     }
-
-    private record Entry(Integer year, Integer month, PublicationMeta meta) {}
 }

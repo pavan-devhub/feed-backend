@@ -1,6 +1,6 @@
 package com.feedstartup.dto;
 
-import com.feedstartup.model.PublicationMeta;
+import com.feedstartup.model.Publication;
 
 import java.time.LocalDate;
 import java.time.Month;
@@ -18,20 +18,22 @@ public class PublicationSummaryDto {
     private Integer year;
     private Integer month;
     private String monthName;
+    private String language;
     private Integer pageCount;
     private String thumbnailUrl;
     private LocalDate publishedDate;
 
-    public static PublicationSummaryDto from(String id, Integer year, Integer month, PublicationMeta meta) {
+    public static PublicationSummaryDto from(String id, Publication publication) {
         PublicationSummaryDto dto = new PublicationSummaryDto();
         dto.id = id;
-        dto.title = meta.getTitle();
-        dto.year = year;
-        dto.month = month;
-        dto.monthName = Month.of(month).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
-        dto.pageCount = meta.getPageCount();
+        dto.title = publication.getTitle();
+        dto.year = publication.getYear();
+        dto.month = publication.getMonth();
+        dto.monthName = Month.of(publication.getMonth()).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+        dto.language = publication.getLanguage().name();
+        dto.pageCount = publication.getPageCount();
         dto.thumbnailUrl = "/api/publications/" + id + "/thumbnail";
-        dto.publishedDate = meta.getPublishedDate();
+        dto.publishedDate = publication.getPublishedDate();
         return dto;
     }
 
@@ -40,6 +42,7 @@ public class PublicationSummaryDto {
     public Integer getYear() { return year; }
     public Integer getMonth() { return month; }
     public String getMonthName() { return monthName; }
+    public String getLanguage() { return language; }
     public Integer getPageCount() { return pageCount; }
     public String getThumbnailUrl() { return thumbnailUrl; }
     public LocalDate getPublishedDate() { return publishedDate; }

@@ -44,6 +44,11 @@ public class EpmEvent {
     @Column(name = "time_range")
     private String timeRange;
 
+    // Optional blurb for the event card on the EPM directory page.
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
     // Lets an admin pull an event from public listings (mistakes, postponements) without losing
     // its registration/volunteer history by deleting the row outright.
     @Column(nullable = false)
@@ -94,6 +99,9 @@ public class EpmEvent {
 
     public String getTimeRange() { return timeRange; }
     public void setTimeRange(String timeRange) { this.timeRange = timeRange; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
 
     public boolean isCancelled() { return cancelled; }
     public void setCancelled(boolean cancelled) { this.cancelled = cancelled; }

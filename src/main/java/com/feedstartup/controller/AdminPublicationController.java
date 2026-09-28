@@ -1,6 +1,7 @@
 package com.feedstartup.controller;
 
 import com.feedstartup.dto.PublicationDetailDto;
+import com.feedstartup.model.PublicationLanguage;
 import com.feedstartup.service.PublicationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -32,9 +33,10 @@ public class AdminPublicationController {
             @RequestParam(required = false) String title,
             @RequestParam Integer year,
             @RequestParam Integer month,
+            @RequestParam(defaultValue = "English") PublicationLanguage language,
             @RequestParam(required = false) Integer volume,
             @RequestParam(required = false) Integer issueNumber) {
-        PublicationDetailDto created = publicationService.uploadPublication(file, title, year, month, volume, issueNumber);
+        PublicationDetailDto created = publicationService.uploadPublication(file, title, year, month, language, volume, issueNumber);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

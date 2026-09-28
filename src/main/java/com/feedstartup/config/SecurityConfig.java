@@ -36,8 +36,10 @@ public class SecurityConfig {
                 // Profile-image GET stays public; only the upload/remove endpoints need auth.
                 .requestMatchers("/api/users/me/**").authenticated()
                 .requestMatchers("/api/publications/**").authenticated()
-                // Per-user ADMIN role from the JWT, not the shared X-Admin-Key used elsewhere.
-                .requestMatchers("/api/admin/publications/**").hasRole("ADMIN")
+                // One admin for everything: Feed World publications and every EPM admin route
+                // (events, registrations, volunteers, categories, venues, images, reviews) all
+                // require the per-user ADMIN role from the JWT.
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().permitAll()
             )
             .exceptionHandling(ex -> ex

@@ -1,6 +1,7 @@
 package com.feedstartup.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /** Admin create/update payload for an EpmEvent. {@code eventDate} is a plain "yyyy-MM-dd" string
  * (parsed in the service), matching how dates are already handled in UserRegistrationDto#dob. */
@@ -9,9 +10,8 @@ public class EpmEventRequestDto {
     @NotBlank(message = "Title is required")
     private String title;
 
-    // Must match one of the EpmCategory ids (see GET /api/epm/events/categories) - enforced in
-    // EpmEventServiceImpl#resolveCategory rather than here, since the message needs the enum's
-    // current list of allowed ids.
+    // Must match the name of one of the admin-managed categories (see GET /api/epm/events/categories)
+    // - enforced in EpmEventServiceImpl#resolveCategory, since the allowed list lives in the database.
     private String category;
 
     @NotBlank(message = "State is required")
@@ -30,6 +30,9 @@ public class EpmEventRequestDto {
     private String eventDate;
 
     private String timeRange;
+
+    @Size(max = 2000, message = "Description must be at most 2000 characters")
+    private String description;
 
     private Boolean cancelled;
 
@@ -56,6 +59,9 @@ public class EpmEventRequestDto {
 
     public String getTimeRange() { return timeRange; }
     public void setTimeRange(String timeRange) { this.timeRange = timeRange; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
 
     public Boolean getCancelled() { return cancelled; }
     public void setCancelled(Boolean cancelled) { this.cancelled = cancelled; }

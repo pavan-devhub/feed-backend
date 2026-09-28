@@ -11,8 +11,12 @@ import com.feedstartup.service.EpmVolunteerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class EpmVolunteerServiceImpl implements EpmVolunteerService {
@@ -55,10 +59,33 @@ public class EpmVolunteerServiceImpl implements EpmVolunteerService {
     }
 
     @Override
-    public List<EpmVolunteerDto> list(Long epmEventId) {
-        List<EpmVolunteer> volunteers = epmEventId != null
-                ? epmVolunteerRepository.findByEpmEventIdOrderByCreatedAtDesc(epmEventId)
-                : epmVolunteerRepository.findAllByOrderByCreatedAtDesc();
-        return volunteers.stream().map(EpmVolunteerDto::from).collect(Collectors.toList());
+    public List<EpmVolunteerDto> list(Long epmEventId, LocalDate eventDate, LocalDate submittedOn, String query) {
+        // Narrow with the most selective indexed lookup available, then apply the rest in memory.
+        List<EpmVolunteer> rows;
+        if (epmEventId != null) {
+            rows = epmVolunteerRepository.findByEpmEventIdOrderByCreatedAtDesc(epmEventId);
+        } else if (eventDate != null) {
+            rows = epmVolunteerRepository.findByEventDateOrderByCreatedAtDesc(eventDate);
+        } else if (submittedOn != null) {
+            rows = epmVolunteerRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                    submittedOn.atStartOfDay(), submittedOn.plusDays(1).atStartOfDay());
+        } else {
+            rows = epmVolunteerRepository.findAllByOrderByCreatedAtDesc();
+        }
+
+        Predicate<EpmVolunteer> matches = r -> true;
+        if (eventDate != null) {
+            matches = matches.and(r -> eventDate.equals(r.getEventDate()));
+        }
+        if (submittedOn != null) {
+            matches = matches.and(r -> r.getCreatedAt() != null && submittedOn.equals(r.getCreatedAt().toLocalDate()));
+        }
+        if (query != null && !query.isBlank()) {
+            String q = query.trim().toLowerCase(Locale.ROOT);
+            matches = matches.and(r -> Stream.of(r.getFullName(), r.getMobileNumber(), r.getEmail(), r.getState(),
+                            r.getDistrict(), r.getEventCity())
+                    .anyMatch(v -> v != null && v.toLowerCase(Locale.ROOT).contains(q)));
+        }
+        return rows.stream().filter(matches).map(EpmVolunteerDto::from).collect(Collectors.toList());
     }
 }

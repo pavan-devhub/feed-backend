@@ -1,6 +1,6 @@
 package com.feedstartup.dto;
 
-import com.feedstartup.model.PublicationMeta;
+import com.feedstartup.model.Publication;
 
 import java.time.LocalDate;
 import java.time.Month;
@@ -15,6 +15,7 @@ public class PublicationDetailDto {
     private Integer year;
     private Integer month;
     private String monthName;
+    private String language;
     private Integer volume;
     private Integer issueNumber;
     private Integer pageCount;
@@ -23,20 +24,21 @@ public class PublicationDetailDto {
     private String pdfUrl;
     private Long fileSizeBytes;
 
-    public static PublicationDetailDto from(String id, Integer year, Integer month, PublicationMeta meta) {
+    public static PublicationDetailDto from(String id, Publication publication) {
         PublicationDetailDto dto = new PublicationDetailDto();
         dto.id = id;
-        dto.title = meta.getTitle();
-        dto.year = year;
-        dto.month = month;
-        dto.monthName = Month.of(month).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
-        dto.volume = meta.getVolume();
-        dto.issueNumber = meta.getIssueNumber();
-        dto.pageCount = meta.getPageCount();
-        dto.publishedDate = meta.getPublishedDate();
+        dto.title = publication.getTitle();
+        dto.year = publication.getYear();
+        dto.month = publication.getMonth();
+        dto.monthName = Month.of(publication.getMonth()).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+        dto.language = publication.getLanguage().name();
+        dto.volume = publication.getVolume();
+        dto.issueNumber = publication.getIssueNumber();
+        dto.pageCount = publication.getPageCount();
+        dto.publishedDate = publication.getPublishedDate();
         dto.thumbnailUrl = "/api/publications/" + id + "/thumbnail";
         dto.pdfUrl = "/api/publications/" + id + "/file";
-        dto.fileSizeBytes = meta.getFileSizeBytes();
+        dto.fileSizeBytes = publication.getFileSizeBytes();
         return dto;
     }
 
@@ -45,6 +47,7 @@ public class PublicationDetailDto {
     public Integer getYear() { return year; }
     public Integer getMonth() { return month; }
     public String getMonthName() { return monthName; }
+    public String getLanguage() { return language; }
     public Integer getVolume() { return volume; }
     public Integer getIssueNumber() { return issueNumber; }
     public Integer getPageCount() { return pageCount; }

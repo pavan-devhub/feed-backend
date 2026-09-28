@@ -3,6 +3,7 @@ package com.feedstartup.controller;
 import com.feedstartup.dto.PublicationDetailDto;
 import com.feedstartup.dto.PublicationSummaryDto;
 import com.feedstartup.dto.YearSummaryDto;
+import com.feedstartup.model.PublicationLanguage;
 import com.feedstartup.service.PublicationService;
 import com.feedstartup.service.StoredFile;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,21 +53,25 @@ public class PublicationController {
     }
 
     @GetMapping("/lookup")
-    public ResponseEntity<PublicationDetailDto> lookup(@RequestParam Integer year, @RequestParam Integer month) {
-        return ResponseEntity.ok(publicationService.getByYearAndMonth(year, month));
+    public ResponseEntity<PublicationDetailDto> lookup(
+            @RequestParam Integer year,
+            @RequestParam Integer month,
+            @RequestParam(defaultValue = "English") PublicationLanguage language) {
+        return ResponseEntity.ok(publicationService.getByYearAndMonth(year, month, language));
     }
 
     @GetMapping("/latest")
-    public ResponseEntity<PublicationDetailDto> latest() {
-        return ResponseEntity.ok(publicationService.getLatest());
+    public ResponseEntity<PublicationDetailDto> latest(@RequestParam(defaultValue = "English") PublicationLanguage language) {
+        return ResponseEntity.ok(publicationService.getLatest(language));
     }
 
     @GetMapping("/window")
     public ResponseEntity<List<PublicationSummaryDto>> window(
             @RequestParam Integer year,
             @RequestParam Integer month,
+            @RequestParam(defaultValue = "English") PublicationLanguage language,
             @RequestParam(defaultValue = "12") int count) {
-        return ResponseEntity.ok(publicationService.getWindow(year, month, count));
+        return ResponseEntity.ok(publicationService.getWindow(year, month, language, count));
     }
 
     @GetMapping("/{id}")
