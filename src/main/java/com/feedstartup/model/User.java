@@ -47,6 +47,8 @@ public class User {
     @Column(nullable = false)
     private String city;
 
+    // The name of one of the user_types rows (Individual, Student, Government, ...) - checked at
+    // registration by UserTypeService.
     @Column(nullable = false)
     private String userType;
 

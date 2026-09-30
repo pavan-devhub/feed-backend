@@ -7,6 +7,7 @@ import com.feedstartup.model.User;
 import com.feedstartup.repository.UserRepository;
 import com.feedstartup.service.StoredFile;
 import com.feedstartup.service.UserService;
+import com.feedstartup.service.UserTypeService;
 import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,6 +37,7 @@ public class UserServiceImpl implements UserService {
     );
 
     private final UserRepository userRepository;
+    private final UserTypeService userTypeService;
 
     @Value("${feedworld.storage.profile-images-dir}")
     private String profileImagesDir;
@@ -44,8 +46,9 @@ public class UserServiceImpl implements UserService {
     private String adminEmail;
 
     @Autowired
-    public UserServiceImpl(UserRepository userRepository) {
+    public UserServiceImpl(UserRepository userRepository, UserTypeService userTypeService) {
         this.userRepository = userRepository;
+        this.userTypeService = userTypeService;
     }
 
     @Override
@@ -54,6 +57,9 @@ public class UserServiceImpl implements UserService {
         if (!registrationDto.getPassword().equals(registrationDto.getConfirmPassword())) {
             throw new IllegalArgumentException("Passwords do not match");
         }
+
+        // Only a type listed (and active) in user_types is accepted, stored under its canonical name.
+        String userType = userTypeService.resolveActive(registrationDto.getUserType());
 
         // Check if email or phone already exists
         if (userRepository.existsByEmail(registrationDto.getEmail())) {
@@ -80,7 +86,7 @@ public class UserServiceImpl implements UserService {
         user.setState(registrationDto.getState());
         user.setDistrict(registrationDto.getDistrict());
         user.setCity(registrationDto.getCity());
-        user.setUserType(registrationDto.getUserType());
+        user.setUserType(userType);
         user.setRole(resolveRole(registrationDto.getEmail()));
 
         return userRepository.save(user);

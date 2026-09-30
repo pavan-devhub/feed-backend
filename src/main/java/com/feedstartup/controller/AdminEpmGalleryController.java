@@ -33,6 +33,7 @@ public class AdminEpmGalleryController {
         this.epmGalleryService = epmGalleryService;
         this.epmGalleryImportService = epmGalleryImportService;
     }
+    
 
     @GetMapping("/blocks")
     public ResponseEntity<List<EpmGalleryBlockDto>> listBlocks() {

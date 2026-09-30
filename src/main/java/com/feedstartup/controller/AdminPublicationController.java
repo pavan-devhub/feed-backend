@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Mutates the publication catalog (upload, edit metadata, replace PDF, delete), so the whole
+ * Mutates the publication catalog (upload, replace PDF, delete), so the whole
  * controller is gated behind the ADMIN role - see SecurityConfig's hasRole("ADMIN") matcher on
  * /api/admin/publications/**. Unlike the other Admin* controllers this uses per-user JWT auth
  * instead of the shared X-Admin-Key header.
@@ -30,23 +30,11 @@ public class AdminPublicationController {
     @PostMapping(consumes = "multipart/form-data")
     public ResponseEntity<?> upload(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(required = false) String title,
             @RequestParam Integer year,
             @RequestParam Integer month,
-            @RequestParam(defaultValue = "English") PublicationLanguage language,
-            @RequestParam(required = false) Integer volume,
-            @RequestParam(required = false) Integer issueNumber) {
-        PublicationDetailDto created = publicationService.uploadPublication(file, title, year, month, language, volume, issueNumber);
+            @RequestParam(defaultValue = "English") PublicationLanguage language) {
+        PublicationDetailDto created = publicationService.uploadPublication(file, year, month, language);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
-    }
-
-    @PutMapping("/{id}")
-    public ResponseEntity<?> update(
-            @PathVariable String id,
-            @RequestParam(required = false) String title,
-            @RequestParam(required = false) Integer volume,
-            @RequestParam(required = false) Integer issueNumber) {
-        return ResponseEntity.ok(publicationService.updateMetadata(id, title, volume, issueNumber));
     }
 
     @PutMapping(value = "/{id}/pdf", consumes = "multipart/form-data")

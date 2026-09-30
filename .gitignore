@@ -10,3 +10,5 @@ target/
 .settings/
 .idea/
 *.iml
+# Local test logins - never commit
+test-accounts.local.md

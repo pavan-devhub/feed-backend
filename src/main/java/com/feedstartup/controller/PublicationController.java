@@ -43,8 +43,10 @@ public class PublicationController {
     }
 
     @GetMapping
-    public ResponseEntity<List<PublicationSummaryDto>> listByYear(@RequestParam Integer year) {
-        return ResponseEntity.ok(publicationService.listByYear(year));
+    public ResponseEntity<List<PublicationSummaryDto>> listByYear(
+            @RequestParam Integer year,
+            @RequestParam(required = false) PublicationLanguage language) {
+        return ResponseEntity.ok(publicationService.listByYear(year, language));
     }
 
     @GetMapping("/search")
@@ -110,8 +112,9 @@ public class PublicationController {
     @GetMapping("/{id}/thumbnail")
     public ResponseEntity<org.springframework.core.io.Resource> streamThumbnail(@PathVariable String id) {
         StoredFile file = publicationService.loadThumbnail(id);
+        // Always image/png - covers are only ever stored as PNG (see PublicationLanguage#thumbnailFileName).
         return ResponseEntity.ok()
-                .contentType(MediaType.IMAGE_PNG)
+                .contentType(MediaType.parseMediaType(file.contentType()))
                 .header(HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
                 .body(file.resource());
     }

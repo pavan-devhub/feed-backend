@@ -21,6 +21,9 @@ public class PdfProcessingServiceImpl implements PdfProcessingService {
 
     @Override
     public PdfMetadata process(Path pdfPath, Path thumbnailOutputPath) throws IOException {
+        if (!thumbnailOutputPath.getFileName().toString().toLowerCase().endsWith(".png")) {
+            throw new IllegalArgumentException("Publication thumbnails are always PNG, not " + thumbnailOutputPath.getFileName());
+        }
         try (PDDocument document = Loader.loadPDF(pdfPath.toFile())) {
             int pageCount = document.getNumberOfPages();
 
@@ -28,7 +31,9 @@ public class PdfProcessingServiceImpl implements PdfProcessingService {
                 PDFRenderer renderer = new PDFRenderer(document);
                 BufferedImage coverImage = renderer.renderImageWithDPI(0, THUMBNAIL_DPI, ImageType.RGB);
                 Files.createDirectories(thumbnailOutputPath.getParent());
-                ImageIO.write(coverImage, "png", thumbnailOutputPath.toFile());
+                if (!ImageIO.write(coverImage, "png", thumbnailOutputPath.toFile())) {
+                    throw new IOException("No PNG writer available to save the cover thumbnail");
+                }
             }
 
             return new PdfMetadata(pageCount);

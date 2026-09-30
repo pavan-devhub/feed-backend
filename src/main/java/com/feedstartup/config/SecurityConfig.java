@@ -30,7 +30,8 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/login", "/api/login/**", "/api/register").permitAll()
+                // The registration form loads its "User Type" choices before anyone is logged in.
+                .requestMatchers("/api/login", "/api/login/**", "/api/register", "/api/user-types").permitAll()
                 .requestMatchers("/api/auth/**").authenticated()
                 .requestMatchers("/api/ers/**").authenticated()
                 // Profile-image GET stays public; only the upload/remove endpoints need auth.

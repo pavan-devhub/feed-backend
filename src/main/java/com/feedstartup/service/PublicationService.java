@@ -8,12 +8,22 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+/**
+ * Every read method only ever returns issues the caller may see: a normal user never gets a
+ * month that hasn't started yet, even when the admin has already uploaded it - it is left out of
+ * lists and answers 404 when asked for directly. Admins see everything. See
+ * {@link PublicationVisibility}.
+ */
 public interface PublicationService {
 
     List<YearSummaryDto> listYears();
 
-    /** Every language edition published in the year - up to three rows per month. */
-    List<PublicationSummaryDto> listByYear(Integer year);
+    /**
+     * With no {@code language}: every language edition published in the year - up to three rows
+     * per month, newest month first. With a {@code language}: just that language's issues,
+     * January to December - one year's shelf on the reader's publications page.
+     */
+    List<PublicationSummaryDto> listByYear(Integer year, PublicationLanguage language);
 
     /**
      * Plain title search, except a query recognised as "Month Year" (either token order, full or
@@ -42,14 +52,12 @@ public interface PublicationService {
 
     StoredFile loadThumbnail(String id);
 
-    PublicationDetailDto uploadPublication(MultipartFile file, String title, Integer year, Integer month,
-                                            PublicationLanguage language, Integer volume, Integer issueNumber);
-
-    PublicationDetailDto updateMetadata(String id, String title, Integer volume, Integer issueNumber);
+    /** The title is always {@code Publication.TITLE} ("Feed World") - it isn't chosen per upload. */
+    PublicationDetailDto uploadPublication(MultipartFile file, Integer year, Integer month, PublicationLanguage language);
 
     /**
      * Swaps the PDF (and regenerates the thumbnail/page count) for an existing publication,
-     * leaving its id, title, volume, issue number and publishedDate untouched.
+     * leaving its id, title and publishedDate untouched.
      */
     PublicationDetailDto replacePdf(String id, MultipartFile file);
 

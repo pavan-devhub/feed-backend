@@ -19,11 +19,17 @@ public class PublicationSummaryDto {
     private Integer month;
     private String monthName;
     private String language;
+    private Integer order;
     private Integer pageCount;
     private String thumbnailUrl;
     private LocalDate publishedDate;
+    private boolean pdfAvailable;
 
-    public static PublicationSummaryDto from(String id, Publication publication) {
+    /**
+     * {@code pdfAvailable}: whether this row's PDF is actually on disk - a row can outlive its
+     * file, and the admin dashboard shows such an edition as "Not uploaded", not "Published".
+     */
+    public static PublicationSummaryDto from(String id, Publication publication, boolean pdfAvailable) {
         PublicationSummaryDto dto = new PublicationSummaryDto();
         dto.id = id;
         dto.title = publication.getTitle();
@@ -31,9 +37,11 @@ public class PublicationSummaryDto {
         dto.month = publication.getMonth();
         dto.monthName = Month.of(publication.getMonth()).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
         dto.language = publication.getLanguage().name();
+        dto.order = publication.getOrder();
         dto.pageCount = publication.getPageCount();
         dto.thumbnailUrl = "/api/publications/" + id + "/thumbnail";
         dto.publishedDate = publication.getPublishedDate();
+        dto.pdfAvailable = pdfAvailable;
         return dto;
     }
 
@@ -43,7 +51,9 @@ public class PublicationSummaryDto {
     public Integer getMonth() { return month; }
     public String getMonthName() { return monthName; }
     public String getLanguage() { return language; }
+    public Integer getOrder() { return order; }
     public Integer getPageCount() { return pageCount; }
     public String getThumbnailUrl() { return thumbnailUrl; }
     public LocalDate getPublishedDate() { return publishedDate; }
+    public boolean isPdfAvailable() { return pdfAvailable; }
 }

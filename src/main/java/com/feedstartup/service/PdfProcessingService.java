@@ -9,6 +9,11 @@ import java.nio.file.Path;
  */
 public interface PdfProcessingService {
 
+    /**
+     * Reads the PDF's page count and renders its first page to {@code thumbnailOutputPath} as a
+     * PNG - the only format publication covers are stored in (see
+     * PublicationLanguage#thumbnailFileName).
+     */
     PdfMetadata process(Path pdfPath, Path thumbnailOutputPath) throws IOException;
 
     record PdfMetadata(int pageCount) {}

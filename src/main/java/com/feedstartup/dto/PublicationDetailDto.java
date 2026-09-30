@@ -16,15 +16,15 @@ public class PublicationDetailDto {
     private Integer month;
     private String monthName;
     private String language;
-    private Integer volume;
-    private Integer issueNumber;
+    private Integer order;
     private Integer pageCount;
     private LocalDate publishedDate;
     private String thumbnailUrl;
     private String pdfUrl;
-    private Long fileSizeBytes;
+    private boolean pdfAvailable;
 
-    public static PublicationDetailDto from(String id, Publication publication) {
+    /** {@code pdfAvailable}: whether this row's PDF is actually on disk - see PublicationSummaryDto. */
+    public static PublicationDetailDto from(String id, Publication publication, boolean pdfAvailable) {
         PublicationDetailDto dto = new PublicationDetailDto();
         dto.id = id;
         dto.title = publication.getTitle();
@@ -32,13 +32,12 @@ public class PublicationDetailDto {
         dto.month = publication.getMonth();
         dto.monthName = Month.of(publication.getMonth()).getDisplayName(TextStyle.FULL, Locale.ENGLISH);
         dto.language = publication.getLanguage().name();
-        dto.volume = publication.getVolume();
-        dto.issueNumber = publication.getIssueNumber();
+        dto.order = publication.getOrder();
         dto.pageCount = publication.getPageCount();
         dto.publishedDate = publication.getPublishedDate();
         dto.thumbnailUrl = "/api/publications/" + id + "/thumbnail";
         dto.pdfUrl = "/api/publications/" + id + "/file";
-        dto.fileSizeBytes = publication.getFileSizeBytes();
+        dto.pdfAvailable = pdfAvailable;
         return dto;
     }
 
@@ -48,11 +47,10 @@ public class PublicationDetailDto {
     public Integer getMonth() { return month; }
     public String getMonthName() { return monthName; }
     public String getLanguage() { return language; }
-    public Integer getVolume() { return volume; }
-    public Integer getIssueNumber() { return issueNumber; }
+    public Integer getOrder() { return order; }
     public Integer getPageCount() { return pageCount; }
     public LocalDate getPublishedDate() { return publishedDate; }
     public String getThumbnailUrl() { return thumbnailUrl; }
     public String getPdfUrl() { return pdfUrl; }
-    public Long getFileSizeBytes() { return fileSizeBytes; }
+    public boolean isPdfAvailable() { return pdfAvailable; }
 }

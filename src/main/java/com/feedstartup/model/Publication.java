@@ -30,6 +30,9 @@ import java.time.LocalDateTime;
         name = "uk_publications_year_month_language", columnNames = {"year", "month", "language"}))
 public class Publication {
 
+    /** Every issue's title - fixed, not chosen at upload time. */
+    public static final String TITLE = "Feed World";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -49,24 +52,32 @@ public class Publication {
     @ColumnDefault("'English'")
     private PublicationLanguage language = PublicationLanguage.English;
 
+    // Telugu = 1, Hindi = 2, English = 3 - always derived from `language` (see
+    // PublicationLanguage#getOrder), never set on its own; stored as a real column so catalog
+    // queries can ORDER BY it (see PublicationRepository#CATALOG_ORDER). `order` is a reserved
+    // word in MySQL, hence the backticks - raw SQL against this table has to quote it as well.
+    // DEFAULT 3 plays the same role as language's DEFAULT 'English' above: it lets ddl-auto add
+    // the column to an already-populated table; PublicationMigrationRunner then corrects any
+    // non-English rows on startup.
+    @Column(name = "`order`", nullable = false)
+    @ColumnDefault("3")
+    private Integer order = PublicationLanguage.English.getOrder();
+
     @Column(nullable = false)
-    private String title = "Feed World";
+    private String title = TITLE;
 
-    private Integer volume;
-
-    private Integer issueNumber;
-
+    
+    
     private Integer pageCount;
 
     private LocalDate publishedDate;
 
-    // Filename only (random UUID + extension), resolved against this issue's own year/month folder.
+    // Filename only (feed_world_<language> + extension, see PublicationLanguage#storedFileBaseName),
+    // resolved against this issue's own year/month folder.
     @Column(nullable = false)
     private String pdfFile;
 
     private String thumbnailFile;
-
-    private Long fileSizeBytes;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -78,11 +89,13 @@ public class Publication {
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = createdAt;
+        order = language.getOrder();
     }
 
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
+        order = language.getOrder();
     }
 
     public Publication() {}
@@ -97,16 +110,15 @@ public class Publication {
     public void setMonth(Integer month) { this.month = month; }
 
     public PublicationLanguage getLanguage() { return language; }
-    public void setLanguage(PublicationLanguage language) { this.language = language; }
+    public void setLanguage(PublicationLanguage language) {
+        this.language = language;
+        this.order = language.getOrder();
+    }
+
+    public Integer getOrder() { return order; }
 
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
-
-    public Integer getVolume() { return volume; }
-    public void setVolume(Integer volume) { this.volume = volume; }
-
-    public Integer getIssueNumber() { return issueNumber; }
-    public void setIssueNumber(Integer issueNumber) { this.issueNumber = issueNumber; }
 
     public Integer getPageCount() { return pageCount; }
     public void setPageCount(Integer pageCount) { this.pageCount = pageCount; }
@@ -119,9 +131,6 @@ public class Publication {
 
     public String getThumbnailFile() { return thumbnailFile; }
     public void setThumbnailFile(String thumbnailFile) { this.thumbnailFile = thumbnailFile; }
-
-    public Long getFileSizeBytes() { return fileSizeBytes; }
-    public void setFileSizeBytes(Long fileSizeBytes) { this.fileSizeBytes = fileSizeBytes; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
