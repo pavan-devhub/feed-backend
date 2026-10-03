@@ -1,5 +1,7 @@
 package com.feedstartup.service;
 
+import com.feedstartup.dto.AdminPublicationRowDto;
+import com.feedstartup.dto.PageDto;
 import com.feedstartup.dto.PublicationDetailDto;
 import com.feedstartup.dto.PublicationSummaryDto;
 import com.feedstartup.dto.YearSummaryDto;
@@ -53,8 +55,19 @@ public interface PublicationService {
 
     StoredFile loadThumbnail(String id);
 
-    /** The title is always {@code Publication.TITLE} ("Feed World") - it isn't chosen per upload. */
-    PublicationDetailDto uploadPublication(MultipartFile file, Integer year, Integer month, PublicationLanguage language);
+    /**
+     * The admin dashboard's publication table for one year, a page at a time (0-based
+     * {@code page}): every uploaded edition - or, with {@code month}, that month's - newest month
+     * first, each month's editions in language order, so a year shows only the months that have
+     * something uploaded. Each row says whether readers can see it yet; {@code status} keeps only
+     * published or only not-yet-published ones, and null keeps both.
+     */
+    PageDto<AdminPublicationRowDto> pageForAdmin(Integer year, Integer month, AdminPublicationRowDto.Status status,
+                                                 int page, int size);
+
+    /** A null or blank {@code title} gets the default, {@code Publication.TITLE} ("Feed World"). */
+    PublicationDetailDto uploadPublication(MultipartFile file, Integer year, Integer month, PublicationLanguage language,
+                                           String title);
 
     /**
      * Swaps the PDF (and regenerates the thumbnail/page count) for an existing publication,

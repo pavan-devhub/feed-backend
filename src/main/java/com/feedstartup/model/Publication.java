@@ -30,8 +30,10 @@ import java.time.LocalDateTime;
         name = "uk_publications_year_month_language", columnNames = {"year", "month", "language"}))
 public class Publication {
 
-    /** Every issue's title - fixed, not chosen at upload time. */
+    /** The title an issue gets when the admin leaves the upload form's title blank. */
     public static final String TITLE = "Feed World";
+
+    public static final int TITLE_MAX_LENGTH = 255;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -63,11 +65,9 @@ public class Publication {
     @ColumnDefault("3")
     private Integer order = PublicationLanguage.English.getOrder();
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = TITLE_MAX_LENGTH)
     private String title = TITLE;
 
-    
-    
     private Integer pageCount;
 
     private LocalDate publishedDate;

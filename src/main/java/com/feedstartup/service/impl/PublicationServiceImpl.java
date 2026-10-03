@@ -1,5 +1,7 @@
 package com.feedstartup.service.impl;
 
+import com.feedstartup.dto.AdminPublicationRowDto;
+import com.feedstartup.dto.PageDto;
 import com.feedstartup.dto.PublicationDetailDto;
 import com.feedstartup.dto.PublicationSummaryDto;
 import com.feedstartup.dto.YearSummaryDto;
@@ -15,6 +17,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -23,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -58,6 +64,8 @@ public class PublicationServiceImpl implements PublicationService {
     // only recognises 4-digit years).
     private static final int MIN_YEAR = 1000;
     private static final int MAX_YEAR = 9999;
+
+    private static final int MAX_ADMIN_PAGE_SIZE = 100;
 
     private final PdfProcessingService pdfProcessingService;
     private final PublicationRepository publicationRepository;
@@ -212,6 +220,37 @@ public class PublicationServiceImpl implements PublicationService {
     }
 
     @Override
+    public PageDto<AdminPublicationRowDto> pageForAdmin(Integer year, Integer month, AdminPublicationRowDto.Status status,
+                                                        int page, int size) {
+        requireValidYear(year);
+        if (month != null) {
+            requireValidMonth(month);
+        }
+        // An issue is published once its month has begun (see PublicationVisibility), so within one
+        // year the published issues are a run of months from January: up to December for a past
+        // year, up to this month for the current one, none for a future one. That turns both
+        // filters into a month range the database can page through.
+        YearMonth latestReleased = visibility.latestReleasedMonth();
+        int lastPublishedMonth = year < latestReleased.getYear() ? 12
+                : year == latestReleased.getYear() ? latestReleased.getMonthValue() : 0;
+        int fromMonth = month == null ? 1 : month;
+        int toMonth = month == null ? 12 : month;
+        if (status == AdminPublicationRowDto.Status.PUBLISHED) {
+            toMonth = Math.min(toMonth, lastPublishedMonth);
+        } else if (status == AdminPublicationRowDto.Status.NOT_PUBLISHED) {
+            fromMonth = Math.max(fromMonth, lastPublishedMonth + 1);
+        }
+
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), MAX_ADMIN_PAGE_SIZE),
+                CATALOG_ORDER);
+        Page<Publication> rows = fromMonth > toMonth
+                ? Page.empty(pageable)
+                : publicationRepository.findByYearAndMonthBetween(year, fromMonth, toMonth, pageable);
+        return PageDto.of(rows, p -> new AdminPublicationRowDto(toSummary(p), p.getMonth() <= lastPublishedMonth
+                ? AdminPublicationRowDto.Status.PUBLISHED : AdminPublicationRowDto.Status.NOT_PUBLISHED));
+    }
+
+    @Override
     public StoredFile loadPdfFile(String id) {
         ParsedId parsed = parseId(id);
         Publication publication = findViewableOrThrow(parsed, id);
@@ -253,7 +292,7 @@ public class PublicationServiceImpl implements PublicationService {
 
     @Override
     public PublicationDetailDto uploadPublication(MultipartFile file, Integer year, Integer month,
-                                                    PublicationLanguage language) {
+                                                    PublicationLanguage language, String title) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("A PDF file is required");
         }
@@ -261,15 +300,12 @@ public class PublicationServiceImpl implements PublicationService {
         if (contentType == null || !contentType.equals("application/pdf")) {
             throw new IllegalArgumentException("Only PDF files are allowed");
         }
-        if (year == null || year < MIN_YEAR || year > MAX_YEAR) {
-            throw new IllegalArgumentException("Year must be a 4-digit year, e.g. 2029");
-        }
-        if (month == null || month < 1 || month > 12) {
-            throw new IllegalArgumentException("Month must be between 1 and 12");
-        }
+        requireValidYear(year);
+        requireValidMonth(month);
         if (language == null) {
             throw new IllegalArgumentException("Language is required");
         }
+        String resolvedTitle = resolveTitle(title);
         // A row whose PDF is gone from disk counts as not uploaded (the admin dashboard offers
         // "Upload" for it), so uploading fills that row in instead of being rejected as a duplicate.
         Publication existing = publicationRepository.findByYearAndMonthAndLanguage(year, month, language).orElse(null);
@@ -299,8 +335,8 @@ public class PublicationServiceImpl implements PublicationService {
             publication.setYear(year);
             publication.setMonth(month);
             publication.setLanguage(language);
-            // Also resets the title when refilling a row whose PDF had gone missing.
-            publication.setTitle(Publication.TITLE);
+            // Also replaces the old title when refilling a row whose PDF had gone missing.
+            publication.setTitle(resolvedTitle);
             publication.setPageCount(metadata.pageCount());
             publication.setPublishedDate(LocalDate.of(year, month, 1));
             publication.setPdfFile(pdfTarget.getFileName().toString());
@@ -373,6 +409,30 @@ public class PublicationServiceImpl implements PublicationService {
             deleteQuietly(publicationDir.resolve(publication.getThumbnailFile()));
         }
         publicationRepository.delete(publication);
+    }
+
+    private static void requireValidYear(Integer year) {
+        if (year == null || year < MIN_YEAR || year > MAX_YEAR) {
+            throw new IllegalArgumentException("Year must be a 4-digit year, e.g. 2029");
+        }
+    }
+
+    private static void requireValidMonth(Integer month) {
+        if (month == null || month < 1 || month > 12) {
+            throw new IllegalArgumentException("Month must be between 1 and 12");
+        }
+    }
+
+    /** The admin's title, trimmed - or "Feed World" when they left it blank. */
+    private static String resolveTitle(String title) {
+        if (title == null || title.isBlank()) {
+            return Publication.TITLE;
+        }
+        String trimmed = title.trim();
+        if (trimmed.length() > Publication.TITLE_MAX_LENGTH) {
+            throw new IllegalArgumentException("Title must be at most " + Publication.TITLE_MAX_LENGTH + " characters");
+        }
+        return trimmed;
     }
 
     private Publication findEntityOrThrow(ParsedId parsed, String id) {

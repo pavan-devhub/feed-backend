@@ -2,6 +2,8 @@ package com.feedstartup.repository;
 
 import com.feedstartup.model.Publication;
 import com.feedstartup.model.PublicationLanguage;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -33,6 +35,9 @@ public interface PublicationRepository extends JpaRepository<Publication, Long> 
     List<Publication> findByYear(Integer year, Sort sort);
 
     List<Publication> findByYearAndLanguage(Integer year, PublicationLanguage language, Sort sort);
+
+    /** One page of a year's editions from {@code fromMonth} to {@code toMonth}, both included. */
+    Page<Publication> findByYearAndMonthBetween(Integer year, Integer fromMonth, Integer toMonth, Pageable pageable);
 
     List<Publication> findByTitleContainingIgnoreCase(String title, Sort sort);
 
