@@ -29,8 +29,9 @@ public class EpmVolunteerRequestDto {
     @NotBlank(message = "District is required")
     private String district;
 
-    @NotBlank(message = "Please select your background")
-    private String experience;
+    // The name of one of the EPM participant types (see GET /api/epm/participant-types).
+    @NotBlank(message = "Participant type is required")
+    private String participantType;
 
     private String reason;
 
@@ -52,8 +53,8 @@ public class EpmVolunteerRequestDto {
     public String getDistrict() { return district; }
     public void setDistrict(String district) { this.district = district; }
 
-    public String getExperience() { return experience; }
-    public void setExperience(String experience) { this.experience = experience; }
+    public String getParticipantType() { return participantType; }
+    public void setParticipantType(String participantType) { this.participantType = participantType; }
 
     public String getReason() { return reason; }
     public void setReason(String reason) { this.reason = reason; }

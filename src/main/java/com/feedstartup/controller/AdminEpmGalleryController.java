@@ -16,7 +16,7 @@ import java.util.List;
 
 /**
  * Uploads/edits/removes the images of one block (see EpmGalleryBlock) at a time - the EPM page's
- * hero, stats, calendar and carousel, and the gallery page's sections. Gated behind the ADMIN role
+ * stats, calendar and carousel, and the gallery page's sections. Gated behind the ADMIN role
  * in SecurityConfig. The state -> district photo tree has its own controller
  * (AdminEpmGalleryRegionController).
  */

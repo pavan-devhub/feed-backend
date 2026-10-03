@@ -1,5 +1,6 @@
 package com.feedstartup.repository;
 
+import com.feedstartup.dto.EpmLocationDto;
 import com.feedstartup.model.EpmEvent;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -34,6 +35,10 @@ public interface EpmEventRepository extends JpaRepository<EpmEvent, Long> {
 
     List<EpmEvent> findAllByOrderByEventDateDesc();
 
+    // EPMs held within a date range (both ends included) - the "new EPM" announcements, which go
+    // out 15 days before each EPM (see EpmNotificationSchedule).
+    List<EpmEvent> findByCancelledFalseAndEventDateBetween(LocalDate from, LocalDate to);
+
     long countByCategory(String category);
 
     long countByCategoryAndEventDateGreaterThanEqual(String category, LocalDate from);
@@ -46,6 +51,10 @@ public interface EpmEventRepository extends JpaRepository<EpmEvent, Long> {
 
     @Query("SELECT DISTINCT e.category FROM EpmEvent e WHERE e.category IS NOT NULL")
     List<String> findDistinctCategories();
+
+    // Every place an EPM has been or will be held, cancelled ones included.
+    @Query("SELECT DISTINCT new com.feedstartup.dto.EpmLocationDto(e.state, e.district, e.city, e.venue) FROM EpmEvent e")
+    List<EpmLocationDto> findDistinctLocations();
 
     // Renaming a category rewrites the plain-string category on every event that used it.
     @Modifying

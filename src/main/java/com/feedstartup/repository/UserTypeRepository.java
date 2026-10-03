@@ -14,4 +14,7 @@ public interface UserTypeRepository extends JpaRepository<UserType, Long> {
     List<UserType> findByActiveTrueOrderByDisplayOrderAscNameAsc();
 
     Optional<UserType> findByNameIgnoreCase(String name);
+
+    /** What the EPM register / volunteer forms offer as "Participant Type", in dropdown order. */
+    List<UserType> findByEpmOrderIsNotNullOrderByEpmOrderAsc();
 }

@@ -1,6 +1,7 @@
 package com.feedstartup.service;
 
 import com.feedstartup.dto.UserTypeDto;
+import com.feedstartup.model.UserType;
 
 import java.util.List;
 
@@ -16,4 +17,13 @@ public interface UserTypeService {
      * choices, if it names no active type.
      */
     String resolveActive(String requested);
+
+    /** The EPM forms' "Participant Type" choices (UserType#epmOrder), in dropdown order. */
+    List<UserTypeDto> listEpmParticipantTypes();
+
+    /**
+     * The participant type {@code requested} names, matched ignoring case. Throws
+     * IllegalArgumentException, listing the valid choices, if it isn't one the EPM forms offer.
+     */
+    UserType resolveEpmParticipantType(String requested);
 }

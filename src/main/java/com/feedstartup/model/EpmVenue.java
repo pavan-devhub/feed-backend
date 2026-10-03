@@ -4,9 +4,10 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 /**
- * A place an EPM can be held, kept by the admin as a reusable list. Picking one in the event form
- * fills in the event's state/district/place/venue - the event still stores its own copy of those
- * values, so editing or removing a venue here never rewrites past or upcoming EPMs.
+ * A place an EPM can be held, kept by the admin as a reusable list. Saving an EPM at a new place
+ * adds it here, and the list feeds the suggestions on the event form - the event still stores its
+ * own copy of state/district/place/venue, so editing or removing a venue here never rewrites past
+ * or upcoming EPMs.
  */
 @Entity
 @Table(name = "epm_venues")

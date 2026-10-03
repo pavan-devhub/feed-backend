@@ -13,7 +13,7 @@ import java.util.List;
  */
 public interface EpmGalleryService {
 
-    /** Every photo in the gallery page's sections (not the EPM page's hero/stats/etc.). */
+    /** Every photo in the gallery page's sections (not the EPM page's stats/calendar/etc.). */
     List<EpmGalleryImageDto> list();
 
     /** Just one section's images, in display order - see EpmGalleryBlock. */

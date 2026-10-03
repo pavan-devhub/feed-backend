@@ -1,7 +1,9 @@
 package com.feedstartup.controller;
 
+import com.feedstartup.dto.EpmCancelRequestDto;
 import com.feedstartup.dto.EpmEventDto;
 import com.feedstartup.dto.EpmEventRequestDto;
+import com.feedstartup.dto.EpmLocationDto;
 import com.feedstartup.service.EpmEventService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +43,12 @@ public class AdminEpmEventController {
         return ResponseEntity.ok(epmEventService.adminList(status, query, state, district, city, category, month, year));
     }
 
+    /** Suggestions for the EPM form's state / district / place / venue fields. */
+    @GetMapping("/locations")
+    public ResponseEntity<List<EpmLocationDto>> locations() {
+        return ResponseEntity.ok(epmEventService.listLocations());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<EpmEventDto> getById(@PathVariable Long id) {
         return ResponseEntity.ok(epmEventService.getById(id));
@@ -54,6 +62,17 @@ public class AdminEpmEventController {
     @PutMapping(value = "/{id}", consumes = "application/json")
     public ResponseEntity<EpmEventDto> update(@PathVariable Long id, @Valid @RequestBody EpmEventRequestDto dto) {
         return ResponseEntity.ok(epmEventService.update(id, dto));
+    }
+
+    /** Calls the EPM off: it leaves the public pages and shows as cancelled - with the optional reason - to everyone signed up. */
+    @PostMapping("/{id}/cancel")
+    public ResponseEntity<EpmEventDto> cancel(@PathVariable Long id, @Valid @RequestBody(required = false) EpmCancelRequestDto dto) {
+        return ResponseEntity.ok(epmEventService.cancel(id, dto == null ? null : dto.reason()));
+    }
+
+    @PostMapping("/{id}/restore")
+    public ResponseEntity<EpmEventDto> restore(@PathVariable Long id) {
+        return ResponseEntity.ok(epmEventService.restore(id));
     }
 
     @DeleteMapping("/{id}")

@@ -28,6 +28,7 @@ public class EpmRegistrationRequestDto {
     @NotBlank(message = "District is required")
     private String district;
 
+    // The name of one of the EPM participant types (see GET /api/epm/participant-types).
     @NotBlank(message = "Participant type is required")
     private String participantType;
 

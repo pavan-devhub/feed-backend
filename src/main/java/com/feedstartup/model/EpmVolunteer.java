@@ -19,6 +19,10 @@ public class EpmVolunteer {
     @Column(name = "epm_event_id", nullable = false)
     private Long epmEventId;
 
+    // The account this sign-up belongs to - see EpmRegistration#userId (same foreign key to users).
+    @Column(name = "user_id")
+    private Long userId;
+
     @Column(name = "event_city", nullable = false)
     private String eventCity;
 
@@ -42,8 +46,11 @@ public class EpmVolunteer {
     @Column(nullable = false)
     private String district;
 
-    @Column(nullable = false)
-    private String experience;
+    // Same as EpmRegistration#participantType: a foreign key to user_types. (The form used to ask
+    // for a free-text "experience" instead; UserLinksMigrationRunner kept those as legacy_experience.)
+    @ManyToOne
+    @JoinColumn(name = "participant_type_id", foreignKey = @ForeignKey(name = "fk_epm_volunteers_participant_type"))
+    private UserType participantType;
 
     @Lob
     @Column(columnDefinition = "TEXT")
@@ -61,6 +68,9 @@ public class EpmVolunteer {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
 
     public Long getEpmEventId() { return epmEventId; }
     public void setEpmEventId(Long epmEventId) { this.epmEventId = epmEventId; }
@@ -89,8 +99,8 @@ public class EpmVolunteer {
     public String getDistrict() { return district; }
     public void setDistrict(String district) { this.district = district; }
 
-    public String getExperience() { return experience; }
-    public void setExperience(String experience) { this.experience = experience; }
+    public UserType getParticipantType() { return participantType; }
+    public void setParticipantType(UserType participantType) { this.participantType = participantType; }
 
     public String getReason() { return reason; }
     public void setReason(String reason) { this.reason = reason; }

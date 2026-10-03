@@ -423,7 +423,8 @@ public class PublicationServiceImpl implements PublicationService {
         throw new ResourceNotFoundException("Publication not found: " + id);
     }
 
-    private static String idOf(int year, int month, PublicationLanguage language) {
+    // Package-private: UserNotificationServiceImpl links its "new issue" notifications with it.
+    static String idOf(int year, int month, PublicationLanguage language) {
         return year + "-" + String.format("%02d", month) + "-" + language.name();
     }
 
@@ -436,7 +437,8 @@ public class PublicationServiceImpl implements PublicationService {
     }
 
     /** Whether the PDF this row names is actually in its month folder - a row can outlive its file. */
-    private boolean pdfExists(Publication p) {
+    @Override
+    public boolean pdfExists(Publication p) {
         return p.getPdfFile() != null
                 && Files.exists(buildPublicationDir(p.getYear(), p.getMonth()).resolve(p.getPdfFile()));
     }

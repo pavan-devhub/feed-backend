@@ -34,4 +34,20 @@ public class UserTypeServiceImpl implements UserTypeService {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown user type \"" + name + "\". Choose one of: "
                         + listActive().stream().map(UserTypeDto::name).collect(Collectors.joining(", "))));
     }
+
+    @Override
+    public List<UserTypeDto> listEpmParticipantTypes() {
+        return userTypeRepository.findByEpmOrderIsNotNullOrderByEpmOrderAsc().stream()
+                .map(UserTypeDto::from)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public UserType resolveEpmParticipantType(String requested) {
+        String name = requested == null ? "" : requested.trim();
+        return userTypeRepository.findByNameIgnoreCase(name)
+                .filter(type -> type.getEpmOrder() != null)
+                .orElseThrow(() -> new IllegalArgumentException("Participant type must be one of: "
+                        + listEpmParticipantTypes().stream().map(UserTypeDto::name).collect(Collectors.joining(", "))));
+    }
 }

@@ -18,7 +18,7 @@ public class EpmVolunteerDto {
     private String email;
     private String state;
     private String district;
-    private String experience;
+    private String participantType;
     private String reason;
     private LocalDateTime createdAt;
 
@@ -34,7 +34,7 @@ public class EpmVolunteerDto {
         dto.email = v.getEmail();
         dto.state = v.getState();
         dto.district = v.getDistrict();
-        dto.experience = v.getExperience();
+        dto.participantType = v.getParticipantType() == null ? null : v.getParticipantType().getName();
         dto.reason = v.getReason();
         dto.createdAt = v.getCreatedAt();
         return dto;
@@ -50,7 +50,7 @@ public class EpmVolunteerDto {
     public String getEmail() { return email; }
     public String getState() { return state; }
     public String getDistrict() { return district; }
-    public String getExperience() { return experience; }
+    public String getParticipantType() { return participantType; }
     public String getReason() { return reason; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 }

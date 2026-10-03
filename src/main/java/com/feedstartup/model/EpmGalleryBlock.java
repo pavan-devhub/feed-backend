@@ -14,8 +14,7 @@ import java.util.Optional;
  */
 public enum EpmGalleryBlock {
     // --- EPM landing page ---
-    EPM_HERO("epm-hero", "Hero banner", Page.EPM_PAGE, 1,
-            "The large banner at the top of the EPM page."),
+    // (The video at the very top of the page is not an image block - see EpmPageVideo.)
     EPM_STATS("epm-stats", "Overview statistics", Page.EPM_PAGE, 3,
             "Background pictures of the three stat cards, in order: EPMs conducted, districts covered, total attendees."),
     EPM_CALENDAR("epm-calendar", "Calendar illustration", Page.EPM_PAGE, 1,

@@ -35,13 +35,13 @@ class EpmGalleryStorageTest {
         // Claims to be a JPEG called holiday.jpg, but the bytes are a PNG.
         MockMultipartFile upload = new MockMultipartFile("file", "holiday.jpg", "image/jpeg", png(40, 25));
 
-        EpmGalleryStorage.StoredImage stored = storage.store(upload, storage.blockDir("epm-hero"), null);
+        EpmGalleryStorage.StoredImage stored = storage.store(upload, storage.blockDir("epm-stats"), null);
 
         assertTrue(stored.fileName().endsWith(".png"));
         assertEquals("image/png", stored.contentType());
         assertEquals(40, stored.width());
         assertEquals(25, stored.height());
-        assertTrue(Files.isRegularFile(storage.blockDir("epm-hero").resolve(stored.fileName())));
+        assertTrue(Files.isRegularFile(storage.blockDir("epm-stats").resolve(stored.fileName())));
     }
 
     @Test
@@ -49,14 +49,14 @@ class EpmGalleryStorageTest {
         MockMultipartFile upload = new MockMultipartFile("file", "photo.png", "image/png",
                 "<script>alert(1)</script> not really an image".getBytes());
 
-        assertThrows(IllegalArgumentException.class, () -> storage.store(upload, storage.blockDir("epm-hero"), null));
-        assertTrue(!Files.exists(storage.blockDir("epm-hero")) || isEmpty(storage.blockDir("epm-hero")));
+        assertThrows(IllegalArgumentException.class, () -> storage.store(upload, storage.blockDir("epm-stats"), null));
+        assertTrue(!Files.exists(storage.blockDir("epm-stats")) || isEmpty(storage.blockDir("epm-stats")));
     }
 
     @Test
     void neverResolvesAPathOutsideItsFolder() {
         Path block = storage.blockDir("epm-moments");
-        assertThrows(IllegalArgumentException.class, () -> storage.child(block, "../epm-hero/x.png"));
+        assertThrows(IllegalArgumentException.class, () -> storage.child(block, "../epm-stats/x.png"));
         assertThrows(IllegalArgumentException.class, () -> storage.child(block, ".."));
         assertThrows(IllegalArgumentException.class, () -> storage.blockDir("../../etc"));
         assertEquals(block.resolve("a.png"), storage.child(block, "a.png"));

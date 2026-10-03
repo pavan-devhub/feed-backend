@@ -3,8 +3,10 @@ package com.feedstartup.controller;
 import com.feedstartup.dto.EpmAdminOverviewDto;
 import com.feedstartup.dto.EpmRegistrationDto;
 import com.feedstartup.dto.EpmVolunteerDto;
+import com.feedstartup.dto.PageDto;
 import com.feedstartup.service.EpmAdminOverviewService;
 import com.feedstartup.service.EpmRegistrationService;
+import com.feedstartup.service.EpmSubmissionFilter;
 import com.feedstartup.service.EpmVolunteerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,6 +21,11 @@ import java.util.List;
  * EpmSubmissionController for staff following up with registrants/volunteers. Like every
  * /api/admin/** route, gated behind the ADMIN role in SecurityConfig - the same login that manages
  * Feed World publications.
+ *
+ * <p>The registration and volunteer lists come a page at a time; their /export twins return every
+ * matching row for the spreadsheet download. All take the same filters:
+ * {@code eventId}; {@code eventDate} - people signed up for an EPM held on this date (yyyy-MM-dd);
+ * {@code submittedOn} - people who sent the form on this date (yyyy-MM-dd); {@code q} - free text.
  */
 @RestController
 @RequestMapping("/api/admin/epm")
@@ -42,25 +49,45 @@ public class AdminEpmController {
         return ResponseEntity.ok(epmAdminOverviewService.getOverview());
     }
 
-    /**
-     * @param eventDate  people registered for an EPM held on this date (yyyy-MM-dd)
-     * @param submittedOn people who submitted the form on this date (yyyy-MM-dd)
-     */
+    /** @param page 0-based page number; {@code size} is capped at EpmSubmissionFilter.MAX_PAGE_SIZE */
     @GetMapping("/registrations")
-    public ResponseEntity<List<EpmRegistrationDto>> listRegistrations(
+    public ResponseEntity<PageDto<EpmRegistrationDto>> listRegistrations(
             @RequestParam(required = false) Long eventId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate eventDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedOn,
-            @RequestParam(name = "q", required = false) String query) {
-        return ResponseEntity.ok(epmRegistrationService.list(eventId, eventDate, submittedOn, query));
+            @RequestParam(name = "q", required = false) String query,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(epmRegistrationService.page(new EpmSubmissionFilter(eventId, eventDate, submittedOn, query), page, size));
     }
 
-    @GetMapping("/volunteers")
-    public ResponseEntity<List<EpmVolunteerDto>> listVolunteers(
+    @GetMapping("/registrations/export")
+    public ResponseEntity<List<EpmRegistrationDto>> exportRegistrations(
             @RequestParam(required = false) Long eventId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate eventDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedOn,
             @RequestParam(name = "q", required = false) String query) {
-        return ResponseEntity.ok(epmVolunteerService.list(eventId, eventDate, submittedOn, query));
+        return ResponseEntity.ok(epmRegistrationService.list(new EpmSubmissionFilter(eventId, eventDate, submittedOn, query)));
+    }
+
+    /** @param page 0-based page number; {@code size} is capped at EpmSubmissionFilter.MAX_PAGE_SIZE */
+    @GetMapping("/volunteers")
+    public ResponseEntity<PageDto<EpmVolunteerDto>> listVolunteers(
+            @RequestParam(required = false) Long eventId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate eventDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedOn,
+            @RequestParam(name = "q", required = false) String query,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(epmVolunteerService.page(new EpmSubmissionFilter(eventId, eventDate, submittedOn, query), page, size));
+    }
+
+    @GetMapping("/volunteers/export")
+    public ResponseEntity<List<EpmVolunteerDto>> exportVolunteers(
+            @RequestParam(required = false) Long eventId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate eventDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate submittedOn,
+            @RequestParam(name = "q", required = false) String query) {
+        return ResponseEntity.ok(epmVolunteerService.list(new EpmSubmissionFilter(eventId, eventDate, submittedOn, query)));
     }
 }

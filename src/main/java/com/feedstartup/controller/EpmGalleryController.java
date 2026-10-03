@@ -41,7 +41,7 @@ public class EpmGalleryController {
         return ResponseEntity.ok(epmGalleryService.list());
     }
 
-    /** Just one section's images, e.g. "epm-moments" or "epm-hero" - see EpmGalleryBlock. */
+    /** Just one section's images, e.g. "epm-moments" or "epm-stats" - see EpmGalleryBlock. */
     @GetMapping("/{block}")
     public ResponseEntity<List<EpmGalleryImageDto>> listByBlock(@PathVariable String block) {
         return ResponseEntity.ok(epmGalleryService.listByBlock(block));

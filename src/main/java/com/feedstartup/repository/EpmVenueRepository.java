@@ -10,4 +10,7 @@ import java.util.List;
 public interface EpmVenueRepository extends JpaRepository<EpmVenue, Long> {
 
     List<EpmVenue> findAllByOrderByStateAscDistrictAscCityAscNameAsc();
+
+    boolean existsByNameIgnoreCaseAndCityIgnoreCaseAndDistrictIgnoreCaseAndStateIgnoreCase(
+            String name, String city, String district, String state);
 }

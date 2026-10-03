@@ -2,7 +2,7 @@ package com.feedstartup.dto;
 
 import com.feedstartup.model.UserType;
 
-/** One option of the registration form's "User Type" dropdown. */
+/** One option of the registration form's "User Type" dropdown, or of the EPM forms' "Participant Type". */
 public record UserTypeDto(String name) {
 
     public static UserTypeDto from(UserType type) {

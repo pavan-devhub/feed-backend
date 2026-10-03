@@ -34,7 +34,7 @@ public class EpmRegistrationDto {
         dto.email = r.getEmail();
         dto.state = r.getState();
         dto.district = r.getDistrict();
-        dto.participantType = r.getParticipantType();
+        dto.participantType = r.getParticipantType() == null ? null : r.getParticipantType().getName();
         dto.consent = r.isConsent();
         dto.createdAt = r.getCreatedAt();
         return dto;

@@ -3,6 +3,7 @@ package com.feedstartup.service;
 import com.feedstartup.dto.PublicationDetailDto;
 import com.feedstartup.dto.PublicationSummaryDto;
 import com.feedstartup.dto.YearSummaryDto;
+import com.feedstartup.model.Publication;
 import com.feedstartup.model.PublicationLanguage;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -62,4 +63,11 @@ public interface PublicationService {
     PublicationDetailDto replacePdf(String id, MultipartFile file);
 
     void deletePublication(String id);
+
+    /**
+     * Whether this row's PDF is actually on disk - a row can outlive its file, and such an issue
+     * can't be read (see PublicationSummaryDto#pdfAvailable). Not a visibility check: release
+     * dates are {@link PublicationVisibility}'s job.
+     */
+    boolean pdfExists(Publication publication);
 }

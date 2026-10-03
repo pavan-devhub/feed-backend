@@ -2,48 +2,60 @@ package com.feedstartup.service.impl;
 
 import com.feedstartup.dto.EpmRegistrationDto;
 import com.feedstartup.dto.EpmRegistrationRequestDto;
+import com.feedstartup.dto.PageDto;
 import com.feedstartup.exception.ResourceNotFoundException;
 import com.feedstartup.model.EpmEvent;
 import com.feedstartup.model.EpmRegistration;
+import com.feedstartup.model.UserType;
 import com.feedstartup.repository.EpmEventRepository;
 import com.feedstartup.repository.EpmRegistrationRepository;
 import com.feedstartup.service.EpmRegistrationService;
+import com.feedstartup.service.EpmSignUpOwner;
+import com.feedstartup.service.EpmSubmissionFilter;
+import com.feedstartup.service.UserTypeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Locale;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Service
 public class EpmRegistrationServiceImpl implements EpmRegistrationService {
 
     private final EpmRegistrationRepository epmRegistrationRepository;
     private final EpmEventRepository epmEventRepository;
+    private final UserTypeService userTypeService;
+    private final EpmSignUpOwner signUpOwner;
 
     @Autowired
-    public EpmRegistrationServiceImpl(EpmRegistrationRepository epmRegistrationRepository,
-                                       EpmEventRepository epmEventRepository) {
+    public EpmRegistrationServiceImpl(EpmRegistrationRepository epmRegistrationRepository, EpmEventRepository epmEventRepository,
+                                    UserTypeService userTypeService, EpmSignUpOwner signUpOwner) {
         this.epmRegistrationRepository = epmRegistrationRepository;
         this.epmEventRepository = epmEventRepository;
+        this.userTypeService = userTypeService;
+        this.signUpOwner = signUpOwner;
     }
 
     @Override
-    public EpmRegistrationDto register(EpmRegistrationRequestDto dto) {
+    public EpmRegistrationDto register(EpmRegistrationRequestDto dto, Long userId) {
         EpmEvent event = epmEventRepository.findById(dto.getEpmEventId())
                 .orElseThrow(() -> new ResourceNotFoundException("EPM event not found: " + dto.getEpmEventId()));
         if (event.isCancelled()) {
             throw new IllegalArgumentException("This EPM has been cancelled and is no longer accepting registrations");
         }
+        if (event.getEventDate().isBefore(LocalDate.now())) {
+            throw new IllegalArgumentException("This EPM has already taken place and is no longer accepting registrations");
+        }
         if (epmRegistrationRepository.existsByEpmEventIdAndMobileNumber(event.getId(), dto.getMobileNumber())) {
             throw new IllegalArgumentException("This mobile number has already registered for this EPM");
         }
 
+        UserType participantType = userTypeService.resolveEpmParticipantType(dto.getParticipantType());
+
         EpmRegistration registration = new EpmRegistration();
         registration.setEpmEventId(event.getId());
+        registration.setUserId(signUpOwner.resolve(userId, dto.getEmail(), dto.getMobileNumber()));
         registration.setEventCity(event.getCity());
         registration.setEventState(event.getState());
         registration.setEventDate(event.getEventDate());
@@ -52,40 +64,22 @@ public class EpmRegistrationServiceImpl implements EpmRegistrationService {
         registration.setEmail(dto.getEmail());
         registration.setState(dto.getState());
         registration.setDistrict(dto.getDistrict());
-        registration.setParticipantType(dto.getParticipantType());
+        registration.setParticipantType(participantType);
         registration.setConsent(dto.isConsent());
 
         return EpmRegistrationDto.from(epmRegistrationRepository.save(registration));
     }
 
     @Override
-    public List<EpmRegistrationDto> list(Long epmEventId, LocalDate eventDate, LocalDate submittedOn, String query) {
-        // Narrow with the most selective indexed lookup available, then apply the rest in memory.
-        List<EpmRegistration> rows;
-        if (epmEventId != null) {
-            rows = epmRegistrationRepository.findByEpmEventIdOrderByCreatedAtDesc(epmEventId);
-        } else if (eventDate != null) {
-            rows = epmRegistrationRepository.findByEventDateOrderByCreatedAtDesc(eventDate);
-        } else if (submittedOn != null) {
-            rows = epmRegistrationRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
-                    submittedOn.atStartOfDay(), submittedOn.plusDays(1).atStartOfDay());
-        } else {
-            rows = epmRegistrationRepository.findAllByOrderByCreatedAtDesc();
-        }
+    public PageDto<EpmRegistrationDto> page(EpmSubmissionFilter filter, int page, int size) {
+        return PageDto.of(epmRegistrationRepository.findAll(filter.<EpmRegistration>toSpecification(), EpmSubmissionFilter.pageRequest(page, size)),
+                EpmRegistrationDto::from);
+    }
 
-        Predicate<EpmRegistration> matches = r -> true;
-        if (eventDate != null) {
-            matches = matches.and(r -> eventDate.equals(r.getEventDate()));
-        }
-        if (submittedOn != null) {
-            matches = matches.and(r -> r.getCreatedAt() != null && submittedOn.equals(r.getCreatedAt().toLocalDate()));
-        }
-        if (query != null && !query.isBlank()) {
-            String q = query.trim().toLowerCase(Locale.ROOT);
-            matches = matches.and(r -> Stream.of(r.getFullName(), r.getMobileNumber(), r.getEmail(), r.getState(),
-                            r.getDistrict(), r.getEventCity())
-                    .anyMatch(v -> v != null && v.toLowerCase(Locale.ROOT).contains(q)));
-        }
-        return rows.stream().filter(matches).map(EpmRegistrationDto::from).collect(Collectors.toList());
+    @Override
+    public List<EpmRegistrationDto> list(EpmSubmissionFilter filter) {
+        return epmRegistrationRepository.findAll(filter.<EpmRegistration>toSpecification(), EpmSubmissionFilter.NEWEST_FIRST).stream()
+                .map(EpmRegistrationDto::from)
+                .collect(Collectors.toList());
     }
 }

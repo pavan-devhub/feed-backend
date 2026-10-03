@@ -1,5 +1,6 @@
 package com.feedstartup.service;
 
+import com.feedstartup.dto.EpmLocationDto;
 import com.feedstartup.dto.EpmVenueDto;
 import com.feedstartup.dto.EpmVenueRequestDto;
 
@@ -15,4 +16,7 @@ public interface EpmVenueService {
     EpmVenueDto update(Long id, EpmVenueRequestDto dto);
 
     void delete(Long id);
+
+    /** Adds {@code location} to the venue list unless it is already there (compared ignoring case). */
+    void recordIfNew(EpmLocationDto location);
 }

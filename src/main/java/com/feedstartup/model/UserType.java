@@ -9,6 +9,10 @@ import java.time.LocalDateTime;
  * in the JWT's userType claim), so it is never renamed; a type that should stop being offered is
  * switched off with {@link #active} instead, which keeps every existing user's value meaningful.
  * The defaults are seeded by UserTypeBootstrapRunner.
+ *
+ * <p>The same table is the list of EPM participant types: the types with an {@link #epmOrder} are
+ * the ones the EPM register and volunteer forms offer, and every EPM registration / volunteer row
+ * points at one of them with a foreign key (participant_type_id).
  */
 @Entity
 @Table(name = "user_types")
@@ -28,6 +32,13 @@ public class UserType {
     /** Whether new registrations may choose it. */
     @Column(nullable = false)
     private boolean active = true;
+
+    /**
+     * Position in the EPM forms' "Participant Type" dropdown, or null if EPM participants can't
+     * choose it. Independent of {@link #active}, which is about creating accounts.
+     */
+    @Column(name = "epm_order")
+    private Integer epmOrder;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -49,5 +60,7 @@ public class UserType {
     public int getDisplayOrder() { return displayOrder; }
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
+    public Integer getEpmOrder() { return epmOrder; }
+    public void setEpmOrder(Integer epmOrder) { this.epmOrder = epmOrder; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 }

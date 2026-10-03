@@ -1,5 +1,6 @@
 package com.feedstartup.service.impl;
 
+import com.feedstartup.dto.EpmLocationDto;
 import com.feedstartup.dto.EpmVenueDto;
 import com.feedstartup.dto.EpmVenueRequestDto;
 import com.feedstartup.exception.ConflictException;
@@ -49,6 +50,24 @@ public class EpmVenueServiceImpl implements EpmVenueService {
     @Override
     public void delete(Long id) {
         venueRepository.delete(findOrThrow(id));
+    }
+
+    @Override
+    public void recordIfNew(EpmLocationDto location) {
+        String name = location.venue().trim();
+        String city = location.city().trim();
+        String district = location.district().trim();
+        String state = location.state().trim();
+        if (venueRepository.existsByNameIgnoreCaseAndCityIgnoreCaseAndDistrictIgnoreCaseAndStateIgnoreCase(
+                name, city, district, state)) {
+            return;
+        }
+        EpmVenue venue = new EpmVenue();
+        venue.setName(name);
+        venue.setCity(city);
+        venue.setDistrict(district);
+        venue.setState(state);
+        venueRepository.save(venue);
     }
 
     private static void apply(EpmVenue venue, EpmVenueRequestDto dto) {

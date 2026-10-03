@@ -2,20 +2,18 @@ package com.feedstartup.service;
 
 import com.feedstartup.dto.EpmVolunteerDto;
 import com.feedstartup.dto.EpmVolunteerRequestDto;
+import com.feedstartup.dto.PageDto;
 
-import java.time.LocalDate;
 import java.util.List;
 
 public interface EpmVolunteerService {
 
-    EpmVolunteerDto volunteer(EpmVolunteerRequestDto dto);
+    /** @param userId the logged-in account sending the form, or null when signed out */
+    EpmVolunteerDto volunteer(EpmVolunteerRequestDto dto, Long userId);
 
-    /**
-     * Admin listing, newest first. Every filter is optional and they combine:
-     * @param epmEventId only submissions for this EPM
-     * @param eventDate only submissions for EPMs held on this date
-     * @param submittedOn only submissions made on this date
-     * @param query free-text match on name, mobile number, email, state, district or the EPM's city
-     */
-    List<EpmVolunteerDto> list(Long epmEventId, LocalDate eventDate, LocalDate submittedOn, String query);
+    /** One page of the admin list, newest first. */
+    PageDto<EpmVolunteerDto> page(EpmSubmissionFilter filter, int page, int size);
+
+    /** Every submission matching {@code filter}, newest first - for the admin's spreadsheet export. */
+    List<EpmVolunteerDto> list(EpmSubmissionFilter filter);
 }
