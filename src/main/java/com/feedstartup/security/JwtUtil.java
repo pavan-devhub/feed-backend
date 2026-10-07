@@ -1,5 +1,6 @@
 package com.feedstartup.security;
 
+import com.feedstartup.model.SystemAdmin;
 import com.feedstartup.model.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -34,12 +35,22 @@ public class JwtUtil {
         return extractClaim(token, Claims::getSubject);
     }
 
+    /** The subject - a user's email, or an admin's username (see generateAdminToken). */
+    public String extractSubject(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
     public Long extractUserId(String token) {
         return extractClaim(token, claims -> claims.get("userId", Long.class));
     }
 
     public String extractJti(String token) {
         return extractClaim(token, Claims::getId);
+    }
+
+    /** The SystemAdmin a token was issued to - null on a user's token. */
+    public Long extractAdminId(String token) {
+        return extractClaim(token, claims -> claims.get("adminId", Long.class));
     }
 
     public String extractRole(String token) {
@@ -73,6 +84,15 @@ public class JwtUtil {
         claims.put("userType", user.getUserType());
         claims.put("role", user.getRole());
         return createToken(claims, user.getEmail(), jti);
+    }
+
+    // The subject is the username: an admin token never names an email, so nothing that looks a
+    // user up by the principal's email can mistake an admin for a user.
+    public String generateAdminToken(SystemAdmin admin, String jti) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("adminId", admin.getId());
+        claims.put("role", "ADMIN");
+        return createToken(claims, admin.getUsername(), jti);
     }
 
     private String createToken(Map<String, Object> claims, String subject, String jti) {

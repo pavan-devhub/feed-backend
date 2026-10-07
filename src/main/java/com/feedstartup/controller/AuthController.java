@@ -1,10 +1,13 @@
 package com.feedstartup.controller;
 
 import com.feedstartup.dto.ActiveSessionDto;
+import com.feedstartup.model.SystemAdmin;
 import com.feedstartup.model.User;
+import com.feedstartup.repository.SystemAdminRepository;
 import com.feedstartup.repository.UserRepository;
 import com.feedstartup.security.JwtUtil;
 import com.feedstartup.service.SessionService;
+import com.feedstartup.service.SystemAdminSessionService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -23,13 +26,18 @@ import java.util.Map;
 public class AuthController {
 
     private final UserRepository userRepository;
+    private final SystemAdminRepository systemAdminRepository;
     private final SessionService sessionService;
+    private final SystemAdminSessionService systemAdminSessionService;
     private final JwtUtil jwtUtil;
 
     @Autowired
-    public AuthController(UserRepository userRepository, SessionService sessionService, JwtUtil jwtUtil) {
+    public AuthController(UserRepository userRepository, SystemAdminRepository systemAdminRepository,
+                          SessionService sessionService, SystemAdminSessionService systemAdminSessionService, JwtUtil jwtUtil) {
         this.userRepository = userRepository;
+        this.systemAdminRepository = systemAdminRepository;
         this.sessionService = sessionService;
+        this.systemAdminSessionService = systemAdminSessionService;
         this.jwtUtil = jwtUtil;
     }
 
@@ -39,6 +47,13 @@ public class AuthController {
 
         if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
             return ResponseEntity.status(401).body(Map.of("status", "error", "error", "Unauthorized"));
+        }
+
+        if (isAdmin(authentication)) {
+            // JwtAuthenticationFilter sets an admin's id as the credentials.
+            return systemAdminRepository.findById((Long) authentication.getCredentials())
+                    .<ResponseEntity<Map<String, Object>>>map(admin -> ResponseEntity.ok(adminAccount(admin)))
+                    .orElseGet(() -> ResponseEntity.status(401).body(Map.of("status", "error", "error", "User not found")));
         }
 
         // We set the email as principal and userId as credentials in the JwtAuthenticationFilter
@@ -72,6 +87,7 @@ public class AuthController {
         if (jwt != null) {
             String jti = jwtUtil.extractJti(jwt);
             sessionService.deleteByJti(jti);
+            systemAdminSessionService.deleteByJti(jti);
         }
 
         Map<String, Object> response = new HashMap<>();
@@ -109,9 +125,32 @@ public class AuthController {
         return ResponseEntity.ok(Map.of("status", "success", "message", "Session revoked"));
     }
 
+    /**
+     * What /login and /me answer for an admin - the same shape as a user's, so the frontend keeps
+     * one `user`: the username stands in as the first name the navbar shows.
+     */
+    static Map<String, Object> adminAccount(SystemAdmin admin) {
+        Map<String, Object> account = new HashMap<>();
+        account.put("status", "success");
+        account.put("adminId", admin.getId());
+        account.put("username", admin.getUsername());
+        account.put("firstName", admin.getUsername());
+        account.put("email", admin.getEmail());
+        account.put("mobileNumber", admin.getMobileNumber());
+        account.put("role", "ADMIN");
+        account.put("profileImageUrl", null);
+        return account;
+    }
+
+    static boolean isAdmin(Authentication authentication) {
+        return authentication.getAuthorities().stream().anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+    }
+
+    // Null for an admin - the device list is for user accounts.
     private Long requireCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())
+                || isAdmin(authentication)) {
             return null;
         }
         String email = (String) authentication.getPrincipal();

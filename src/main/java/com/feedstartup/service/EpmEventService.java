@@ -2,9 +2,11 @@ package com.feedstartup.service;
 
 import com.feedstartup.dto.EpmCategoryDto;
 import com.feedstartup.dto.EpmEventDto;
+import com.feedstartup.dto.EpmEventFacetsDto;
 import com.feedstartup.dto.EpmEventRequestDto;
 import com.feedstartup.dto.EpmLocationDto;
 import com.feedstartup.dto.EpmStatsDto;
+import com.feedstartup.dto.PageDto;
 
 import java.util.Collection;
 import java.util.List;
@@ -13,49 +15,42 @@ import java.util.Map;
 public interface EpmEventService {
 
     /**
-     * Public listing, each EPM with its counts and change history (so a rescheduled or moved EPM can
-     * say so). Cancelled EPMs are left out unless {@code includeCancelled} - which only applies to
-     * upcoming ones: the register / volunteer pages list those too, marked cancelled.
-     *
-     * @param status one of "upcoming" (default), "previous" or "all"
-     * @param state optional exact-match filter (case-insensitive)
-     * @param district optional exact-match filter (case-insensitive)
-     * @param city optional exact-match filter (case-insensitive)
-     * @param category optional exact-match filter (case-insensitive) against a category name
-     * @param month optional 1-12 filter on the event's calendar month
-     * @param year optional calendar-year filter (e.g. the homepage calendar widget asks for a
-     *             specific year+month together, since a bare month would otherwise match that
-     *             month across every year in the data)
-     * @param includeCancelled also list upcoming EPMs the admin has cancelled
+     * Every EPM matching {@code filter} (see EpmEventFilter#forPublic and #forAdmin), each with its
+     * registration and volunteer counts and its change history - so a rescheduled or moved EPM can
+     * say so. Upcoming EPMs come soonest first, previous ones latest first.
      */
-    List<EpmEventDto> list(String status, String state, String district, String city, String category, Integer month,
-                           Integer year, boolean includeCancelled);
+    List<EpmEventDto> list(EpmEventFilter filter);
+
+    /** The same list, a page at a time - {@code page} is 0-based and {@code size} at most Paging.MAX_PAGE_SIZE. */
+    PageDto<EpmEventDto> page(EpmEventFilter filter, int page, int size);
 
     /**
-     * Admin listing: same filters as {@link #list}, plus a free-text {@code query} over
-     * title/place/venue, and cancelled events are included. Every row carries its registration
-     * and volunteer counts.
+     * The choices for the filters over {@code filter}'s tab - its status and cancelled rule, every
+     * other filter ignored: the places its EPMs are held and how many each category has.
      */
-    List<EpmEventDto> adminList(String status, String query, String state, String district, String city,
-                                String category, Integer month, Integer year);
+    EpmEventFacetsDto facets(EpmEventFilter filter);
 
+    /** One EPM, with its counts and change history. */
     EpmEventDto getById(Long id);
 
-    EpmEventDto create(EpmEventRequestDto dto);
+    // Each of these admin actions is also written to the EPM Activity log (EpmAdminActivityService)
+    // under {@code adminId}, the logged-in admin.
+
+    EpmEventDto create(EpmEventRequestDto dto, Long adminId);
 
     /**
      * Saves the edit and logs each change to the date, time, place or description (see
      * EpmEventChanges). Only upcoming EPMs can be edited, and not moved to a date that has passed.
      */
-    EpmEventDto update(Long id, EpmEventRequestDto dto);
+    EpmEventDto update(Long id, EpmEventRequestDto dto, Long adminId);
 
     /** Calls an upcoming EPM off, logging the optional {@code reason} for the people registered or volunteering. */
-    EpmEventDto cancel(Long id, String reason);
+    EpmEventDto cancel(Long id, String reason, Long adminId);
 
     /** Reinstates a cancelled upcoming EPM. */
-    EpmEventDto restore(Long id);
+    EpmEventDto restore(Long id, Long adminId);
 
-    void delete(Long id);
+    void delete(Long id, Long adminId);
 
     /** The given EPMs (missing ids are skipped), each with its net changes and full update log. */
     Map<Long, EpmEventDto> findWithHistory(Collection<Long> ids);

@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -23,6 +24,11 @@ import java.util.Objects;
  * no-op once everything is in place, so this is safe to leave in rather than requiring a separate
  * one-off script.
  * <ol>
+ *   <li>The unique index: before editions had a language there was one issue per month, and the
+ *       table got a unique index on (year, month). Hibernate's ddl-auto=update adds the
+ *       (year, month, language) index but never drops an old one, so on a database from that time
+ *       a month's second language failed with "Duplicate entry". Any unique index over exactly
+ *       (year, month) is dropped.</li>
  *   <li>The `order` column: rows that predate it were all added with the column's DEFAULT
  *       (English's 3), so each non-English row is corrected to its language's value
  *       (see PublicationLanguage#getOrder).</li>
@@ -54,21 +60,42 @@ public class PublicationMigrationRunner implements CommandLineRunner {
 
     private final PublicationRepository publicationRepository;
     private final PdfProcessingService pdfProcessingService;
+    private final JdbcTemplate jdbc;
 
     @Value("${feedworld.storage.base-dir}")
     private String baseDir;
 
-    public PublicationMigrationRunner(PublicationRepository publicationRepository, PdfProcessingService pdfProcessingService) {
+    public PublicationMigrationRunner(PublicationRepository publicationRepository, PdfProcessingService pdfProcessingService,
+                                      JdbcTemplate jdbc) {
         this.publicationRepository = publicationRepository;
         this.pdfProcessingService = pdfProcessingService;
+        this.jdbc = jdbc;
     }
 
     @Override
     public void run(String... args) {
+        dropOneEditionPerMonthIndex();
         syncLanguageOrder();
         moveFilesOutOfLanguageFolders();
         renameFilesByLanguage();
         convertThumbnailsToPng();
+    }
+
+    void dropOneEditionPerMonthIndex() {
+        try {
+            List<String> stale = jdbc.queryForList(
+                    "SELECT index_name FROM information_schema.statistics"
+                            + " WHERE table_schema = DATABASE() AND table_name = 'publications' AND non_unique = 0"
+                            + " GROUP BY index_name"
+                            + " HAVING COUNT(*) = 2 AND SUM(column_name IN ('year', 'month')) = 2",
+                    String.class);
+            for (String index : stale) {
+                jdbc.execute("ALTER TABLE publications DROP INDEX `" + index.replace("`", "``") + "`");
+                log.info("Dropped the old one-edition-per-month index {} on publications - a month can now hold every language.", index);
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not check publications for the old one-edition-per-month index - it will be retried on the next startup", e);
+        }
     }
 
     private void convertThumbnailsToPng() {

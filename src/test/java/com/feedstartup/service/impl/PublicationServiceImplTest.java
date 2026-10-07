@@ -22,6 +22,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -66,7 +67,8 @@ class PublicationServiceImplTest {
         upload(2027, 1);
 
         Clock sept29 = Clock.fixed(LocalDateTime.of(2026, 9, 29, 12, 0).atZone(INDIA).toInstant(), INDIA);
-        service = new PublicationServiceImpl(pdfProcessing, repository, new PublicationVisibility(sept29));
+        service = new PublicationServiceImpl(pdfProcessing, repository, new PublicationVisibility(sept29),
+                mock(ApplicationEventPublisher.class));
         ReflectionTestUtils.setField(service, "baseDir", storage.toString());
 
         when(repository.findAll(any(Sort.class))).thenAnswer(inv -> newestFirst());

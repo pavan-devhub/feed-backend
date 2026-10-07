@@ -2,24 +2,33 @@ package com.feedstartup.service.impl;
 
 import com.feedstartup.dto.EpmCategoryDto;
 import com.feedstartup.dto.EpmEventDto;
+import com.feedstartup.dto.EpmEventFacetsDto;
 import com.feedstartup.dto.EpmEventRequestDto;
 import com.feedstartup.dto.EpmEventUpdateDto;
 import com.feedstartup.dto.EpmLocationDto;
 import com.feedstartup.dto.EpmStatsDto;
+import com.feedstartup.dto.PageDto;
 import com.feedstartup.exception.ConflictException;
 import com.feedstartup.exception.ResourceNotFoundException;
+import com.feedstartup.model.EpmAdminActivity;
 import com.feedstartup.model.EpmEvent;
 import com.feedstartup.model.EpmEventUpdate;
 import com.feedstartup.model.EpmEventUpdate.Field;
+import com.feedstartup.realtime.LiveUpdateEvents;
 import com.feedstartup.repository.EpmEventRepository;
 import com.feedstartup.repository.EpmEventUpdateRepository;
 import com.feedstartup.repository.EpmRegistrationRepository;
 import com.feedstartup.repository.EpmVolunteerRepository;
+import com.feedstartup.service.EpmAdminActivityService;
 import com.feedstartup.service.EpmCategoryService;
 import com.feedstartup.service.EpmEventChanges;
+import com.feedstartup.service.EpmEventFilter;
 import com.feedstartup.service.EpmEventService;
 import com.feedstartup.service.EpmVenueService;
+import com.feedstartup.util.Paging;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,7 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.Predicate;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -47,9 +56,18 @@ public class EpmEventServiceImpl implements EpmEventService {
     private final EpmCategoryService epmCategoryService;
     private final EpmVenueService epmVenueService;
     private final EpmEventUpdateRepository epmEventUpdateRepository;
+    private final EpmAdminActivityService epmAdminActivityService;
+    // Every change is announced as LiveUpdateEvents.EpmChanged, so open EPM lists, bells and
+    // Status of Activities pages reload (see LiveUpdateBroadcaster).
+    private final ApplicationEventPublisher events;
 
     // "30 Sep 2026", as the admin panel shows dates.
     private static final DateTimeFormatter DISPLAY_DATE = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH);
+
+    private static final Comparator<EpmEventFacetsDto.Place> PLACE_ORDER =
+            Comparator.comparing(EpmEventFacetsDto.Place::state, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(EpmEventFacetsDto.Place::district, String.CASE_INSENSITIVE_ORDER)
+                    .thenComparing(EpmEventFacetsDto.Place::city, String.CASE_INSENSITIVE_ORDER);
 
     private static final Comparator<EpmLocationDto> LOCATION_ORDER =
             Comparator.comparing(EpmLocationDto::state, String.CASE_INSENSITIVE_ORDER)
@@ -63,70 +81,75 @@ public class EpmEventServiceImpl implements EpmEventService {
                                 EpmVolunteerRepository epmVolunteerRepository,
                                 EpmCategoryService epmCategoryService,
                                 EpmVenueService epmVenueService,
-                                EpmEventUpdateRepository epmEventUpdateRepository) {
+                                EpmEventUpdateRepository epmEventUpdateRepository,
+                                EpmAdminActivityService epmAdminActivityService,
+                                ApplicationEventPublisher events) {
         this.epmEventRepository = epmEventRepository;
         this.epmRegistrationRepository = epmRegistrationRepository;
         this.epmVolunteerRepository = epmVolunteerRepository;
         this.epmCategoryService = epmCategoryService;
         this.epmVenueService = epmVenueService;
         this.epmEventUpdateRepository = epmEventUpdateRepository;
+        this.epmAdminActivityService = epmAdminActivityService;
+        this.events = events;
     }
 
     @Override
-    public List<EpmEventDto> list(String status, String state, String district, String city, String category, Integer month,
-                                  Integer year, boolean includeCancelled) {
-        LocalDate today = LocalDate.now();
-        List<EpmEvent> events = switch (normalizeStatus(status)) {
-            case "previous" -> epmEventRepository.findByCancelledFalseAndEventDateLessThanOrderByEventDateDesc(today);
-            case "all" -> epmEventRepository.findByCancelledFalseOrderByEventDateDesc();
-            default -> includeCancelled
-                    ? epmEventRepository.findByEventDateGreaterThanEqualOrderByEventDateAsc(today)
-                    : epmEventRepository.findByCancelledFalseAndEventDateGreaterThanEqualOrderByEventDateAsc(today);
-        };
-        // With each EPM's changes, so the register / volunteer lists can show what was rescheduled or moved.
-        return withCounts(events.stream()
-                .filter(filters(null, state, district, city, category, month, year))
-                .collect(Collectors.toList()), true);
+    public List<EpmEventDto> list(EpmEventFilter filter) {
+        return withCounts(epmEventRepository.findAll(filter.toSpecification(LocalDate.now()), filter.sort()), true);
     }
 
     @Override
-    public List<EpmEventDto> adminList(String status, String query, String state, String district, String city,
-                                       String category, Integer month, Integer year) {
-        LocalDate today = LocalDate.now();
-        List<EpmEvent> events = switch (normalizeStatus(status)) {
-            case "previous" -> epmEventRepository.findByEventDateLessThanOrderByEventDateDesc(today);
-            case "all" -> epmEventRepository.findAllByOrderByEventDateDesc();
-            default -> epmEventRepository.findByEventDateGreaterThanEqualOrderByEventDateAsc(today);
-        };
-        return withCounts(events.stream()
-                .filter(filters(query, state, district, city, category, month, year))
-                .collect(Collectors.toList()), true);
+    public PageDto<EpmEventDto> page(EpmEventFilter filter, int page, int size) {
+        Page<EpmEvent> rows = epmEventRepository.findAll(filter.toSpecification(LocalDate.now()),
+                Paging.of(page, size, filter.sort()));
+        // Counts and change history are looked up for this page's EPMs only.
+        return PageDto.of(rows, withCounts(rows.getContent(), true));
+    }
+
+    @Override
+    public EpmEventFacetsDto facets(EpmEventFilter filter) {
+        // A tab holds at most a few hundred EPMs (each is a meeting held somewhere), so its places
+        // and category counts are worked out from the rows rather than with one query apiece.
+        List<EpmEvent> events = epmEventRepository.findAll(filter.statusOnly().toSpecification(LocalDate.now()));
+        List<EpmEventFacetsDto.Place> places = events.stream()
+                .map(e -> new EpmEventFacetsDto.Place(e.getState(), e.getDistrict(), e.getCity()))
+                .distinct()
+                .sorted(PLACE_ORDER)
+                .toList();
+        Map<String, Long> categoryCounts = events.stream()
+                .filter(e -> e.getCategory() != null)
+                .collect(Collectors.groupingBy(EpmEvent::getCategory, TreeMap::new, Collectors.counting()));
+        return new EpmEventFacetsDto(events.size(), places, categoryCounts);
     }
 
     @Override
     public EpmEventDto getById(Long id) {
-        return EpmEventDto.from(findOrThrow(id));
+        return withCounts(List.of(findOrThrow(id)), true).get(0);
     }
 
     @Override
     @Transactional
-    public EpmEventDto create(EpmEventRequestDto dto) {
+    public EpmEventDto create(EpmEventRequestDto dto, Long adminId) {
         EpmEvent event = new EpmEvent();
         applyRequest(event, dto);
         EpmEvent saved = epmEventRepository.save(event);
         epmVenueService.recordIfNew(locationOf(saved));
+        epmAdminActivityService.recordCreated(saved, adminId);
+        events.publishEvent(new LiveUpdateEvents.EpmChanged(saved.getId()));
         return EpmEventDto.from(saved);
     }
 
     @Override
     @Transactional
-    public EpmEventDto update(Long id, EpmEventRequestDto dto) {
+    public EpmEventDto update(Long id, EpmEventRequestDto dto, Long adminId) {
         EpmEvent event = findOrThrow(id);
         requireUpcoming(event, "edited");
         if (parseDate(dto.getEventDate()).isBefore(LocalDate.now())) {
             throw new IllegalArgumentException("An upcoming EPM can't be moved to a date that has already passed - pick today or a later date");
         }
         Map<Field, String> before = EpmEventChanges.snapshot(event);
+        Map<EpmAdminActivity.Field, String> adminBefore = epmAdminActivityService.snapshot(event);
         boolean wasCancelled = event.isCancelled();
         String locationBefore = locationKey(locationOf(event));
         applyRequest(event, dto);
@@ -149,12 +172,14 @@ public class EpmEventServiceImpl implements EpmEventService {
         if (!locationKey(locationOf(saved)).equals(locationBefore)) {
             epmVenueService.recordIfNew(locationOf(saved));
         }
+        epmAdminActivityService.recordEdit(saved, adminBefore, wasCancelled, adminId);
+        events.publishEvent(new LiveUpdateEvents.EpmChanged(saved.getId()));
         return EpmEventDto.from(saved);
     }
 
     @Override
     @Transactional
-    public EpmEventDto cancel(Long id, String reason) {
+    public EpmEventDto cancel(Long id, String reason, Long adminId) {
         EpmEvent event = findOrThrow(id);
         requireUpcoming(event, "cancelled");
         if (event.isCancelled()) {
@@ -164,12 +189,14 @@ public class EpmEventServiceImpl implements EpmEventService {
         EpmEvent saved = epmEventRepository.save(event);
         String note = reason == null || reason.isBlank() ? null : reason.trim();
         epmEventUpdateRepository.save(new EpmEventUpdate(saved.getId(), Field.CANCELLED, null, note));
+        epmAdminActivityService.recordCancelled(saved, note, adminId);
+        events.publishEvent(new LiveUpdateEvents.EpmChanged(saved.getId()));
         return EpmEventDto.from(saved);
     }
 
     @Override
     @Transactional
-    public EpmEventDto restore(Long id) {
+    public EpmEventDto restore(Long id, Long adminId) {
         EpmEvent event = findOrThrow(id);
         requireUpcoming(event, "reinstated");
         if (!event.isCancelled()) {
@@ -178,16 +205,21 @@ public class EpmEventServiceImpl implements EpmEventService {
         event.setCancelled(false);
         EpmEvent saved = epmEventRepository.save(event);
         epmEventUpdateRepository.save(new EpmEventUpdate(saved.getId(), Field.RESTORED, null, null));
+        epmAdminActivityService.recordReinstated(saved, adminId);
+        events.publishEvent(new LiveUpdateEvents.EpmChanged(saved.getId()));
         return EpmEventDto.from(saved);
     }
 
     @Override
     @Transactional
-    public void delete(Long id) {
+    public void delete(Long id, Long adminId) {
         EpmEvent event = findOrThrow(id);
         // Registrations/volunteers are kept: they carry their own copy of the event's city/state/date.
+        // So is the EPM Activity log, which copies what it needs and so outlives the EPM.
+        epmAdminActivityService.recordDeleted(event, adminId);
         epmEventUpdateRepository.deleteByEpmEventId(event.getId());
         epmEventRepository.delete(event);
+        events.publishEvent(new LiveUpdateEvents.EpmChanged(event.getId()));
     }
 
     @Override
@@ -233,60 +265,16 @@ public class EpmEventServiceImpl implements EpmEventService {
 
     // --- helpers ---------------------------------------------------------------------------
 
-    private static String normalizeStatus(String status) {
-        String normalized = (status == null || status.isBlank()) ? "upcoming" : status.trim().toLowerCase(Locale.ROOT);
-        if (!List.of("upcoming", "previous", "all").contains(normalized)) {
-            throw new IllegalArgumentException("Invalid status filter: " + status);
-        }
-        return normalized;
-    }
-
-    private static Predicate<EpmEvent> filters(String query, String state, String district, String city,
-                                               String category, Integer month, Integer year) {
-        Predicate<EpmEvent> matches = e -> true;
-        if (query != null && !query.isBlank()) {
-            String q = query.trim().toLowerCase(Locale.ROOT);
-            matches = matches.and(e -> containsIgnoreCase(e.getTitle(), q) || containsIgnoreCase(e.getCity(), q)
-                    || containsIgnoreCase(e.getDistrict(), q) || containsIgnoreCase(e.getState(), q)
-                    || containsIgnoreCase(e.getVenue(), q) || containsIgnoreCase(e.getCategory(), q));
-        }
-        if (state != null && !state.isBlank()) {
-            matches = matches.and(e -> e.getState() != null && e.getState().equalsIgnoreCase(state.trim()));
-        }
-        if (district != null && !district.isBlank()) {
-            matches = matches.and(e -> e.getDistrict() != null && e.getDistrict().equalsIgnoreCase(district.trim()));
-        }
-        if (city != null && !city.isBlank()) {
-            matches = matches.and(e -> e.getCity() != null && e.getCity().equalsIgnoreCase(city.trim()));
-        }
-        if (category != null && !category.isBlank()) {
-            matches = matches.and(e -> e.getCategory() != null && e.getCategory().equalsIgnoreCase(category.trim()));
-        }
-        if (month != null) {
-            if (month < 1 || month > 12) {
-                throw new IllegalArgumentException("Month must be between 1 and 12");
-            }
-            matches = matches.and(e -> e.getEventDate() != null && e.getEventDate().getMonthValue() == month);
-        }
-        if (year != null) {
-            matches = matches.and(e -> e.getEventDate() != null && e.getEventDate().getYear() == year);
-        }
-        return matches;
-    }
-
-    private static boolean containsIgnoreCase(String value, String lowerQuery) {
-        return value != null && value.toLowerCase(Locale.ROOT).contains(lowerQuery);
-    }
-
     /**
      * DTOs for {@code events}, each with its registration and volunteer counts (two grouped
-     * queries) and, if {@code withChanges}, what has changed since it was scheduled and every
-     * logged update, newest first (one more).
+     * queries over just these events) and, if {@code withChanges}, what has changed since it was
+     * scheduled and every logged update, newest first (one more).
      */
     private List<EpmEventDto> withCounts(List<EpmEvent> events, boolean withChanges) {
         if (events.isEmpty()) return List.of();
-        Map<Long, Long> registrations = toCountMap(epmRegistrationRepository.countPerEvent());
-        Map<Long, Long> volunteers = toCountMap(epmVolunteerRepository.countPerEvent());
+        List<Long> ids = events.stream().map(EpmEvent::getId).toList();
+        Map<Long, Long> registrations = toCountMap(epmRegistrationRepository.countPerEvent(ids));
+        Map<Long, Long> volunteers = toCountMap(epmVolunteerRepository.countPerEvent(ids));
         Map<Long, List<EpmEventUpdate>> history = withChanges ? historyFor(events) : Map.of();
         return events.stream()
                 .map(e -> {

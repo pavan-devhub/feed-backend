@@ -49,7 +49,7 @@ public class AdminEpmController {
         return ResponseEntity.ok(epmAdminOverviewService.getOverview());
     }
 
-    /** @param page 0-based page number; {@code size} is capped at EpmSubmissionFilter.MAX_PAGE_SIZE */
+    /** @param page 0-based page number; {@code size} is capped at Paging.MAX_PAGE_SIZE */
     @GetMapping("/registrations")
     public ResponseEntity<PageDto<EpmRegistrationDto>> listRegistrations(
             @RequestParam(required = false) Long eventId,
@@ -70,7 +70,7 @@ public class AdminEpmController {
         return ResponseEntity.ok(epmRegistrationService.list(new EpmSubmissionFilter(eventId, eventDate, submittedOn, query)));
     }
 
-    /** @param page 0-based page number; {@code size} is capped at EpmSubmissionFilter.MAX_PAGE_SIZE */
+    /** @param page 0-based page number; {@code size} is capped at Paging.MAX_PAGE_SIZE */
     @GetMapping("/volunteers")
     public ResponseEntity<PageDto<EpmVolunteerDto>> listVolunteers(
             @RequestParam(required = false) Long eventId,

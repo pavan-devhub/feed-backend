@@ -3,6 +3,7 @@ package com.feedstartup.service.impl;
 import com.feedstartup.dto.EpmActivityDto;
 import com.feedstartup.dto.EpmEventDto;
 import com.feedstartup.dto.EpmMyActivitiesDto;
+import com.feedstartup.dto.EpmSignUpDetailsDto;
 import com.feedstartup.model.EpmEvent;
 import com.feedstartup.model.EpmRegistration;
 import com.feedstartup.model.UserType;
@@ -11,6 +12,7 @@ import com.feedstartup.repository.EpmRegistrationRepository;
 import com.feedstartup.repository.EpmVolunteerRepository;
 import com.feedstartup.repository.UserRepository;
 import com.feedstartup.service.EpmEventService;
+import com.feedstartup.service.UserTypeService;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
@@ -32,8 +34,9 @@ class EpmActivityServiceImplTest {
     private final EpmRegistrationRepository registrationRepository = mock(EpmRegistrationRepository.class);
     private final EpmVolunteerRepository volunteerRepository = mock(EpmVolunteerRepository.class);
     private final EpmEventService eventService = mock(EpmEventService.class);
+    private final UserTypeService userTypeService = mock(UserTypeService.class);
     private final EpmActivityServiceImpl service =
-            new EpmActivityServiceImpl(userRepository, registrationRepository, volunteerRepository, eventService);
+            new EpmActivityServiceImpl(userRepository, registrationRepository, volunteerRepository, eventService, userTypeService);
 
     @Test
     void listsOnlyTheUsersUpcomingRegistrationsSoonestFirstAndKeepsRemovedEpms() {
@@ -62,6 +65,42 @@ class EpmActivityServiceImplTest {
         assertNull(mine.registrations().get(1).event());
         assertEquals(today.plusDays(5), mine.registrations().get(1).currentEventDate());
         assertTrue(mine.volunteers().isEmpty());
+    }
+
+    @Test
+    void signUpDetailsComeFromTheAccount() {
+        User user = account("Ravi", " Kumar ", "Teja", "student");
+        when(userRepository.findByEmail("ravi@example.com")).thenReturn(Optional.of(user));
+        when(userTypeService.findEpmParticipantType("student")).thenReturn(Optional.of(new UserType("Student", 3)));
+
+        assertEquals(new EpmSignUpDetailsDto("Ravi Kumar Teja", "9876543210", "ravi@example.com",
+                "Andhra Pradesh", "Krishna", "Student"), service.signUpDetails("ravi@example.com"));
+    }
+
+    @Test
+    void signUpDetailsLeaveTheParticipantTypeForTheFormWhenTheAccountsTypeIsNotOne() {
+        User user = account("Ravi", null, "Teja", "Government");
+        when(userRepository.findByEmail("ravi@example.com")).thenReturn(Optional.of(user));
+        when(userTypeService.findEpmParticipantType("Government")).thenReturn(Optional.empty());
+
+        EpmSignUpDetailsDto details = service.signUpDetails("ravi@example.com");
+
+        assertEquals("Ravi Teja", details.fullName());
+        assertNull(details.participantType());
+    }
+
+    private static User account(String firstName, String middleName, String lastName, String userType) {
+        User user = new User();
+        user.setId(5L);
+        user.setFirstName(firstName);
+        user.setMiddleName(middleName);
+        user.setLastName(lastName);
+        user.setEmail("ravi@example.com");
+        user.setPhone("9876543210");
+        user.setState("Andhra Pradesh");
+        user.setDistrict("Krishna");
+        user.setUserType(userType);
+        return user;
     }
 
     private static EpmRegistration registration(Long id, Long eventId, LocalDate eventDate) {

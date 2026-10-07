@@ -44,13 +44,16 @@ public class AdminPublicationController {
         return ResponseEntity.ok(publicationService.pageForAdmin(year, month, status, page, size));
     }
 
-    /** {@code title} is optional - left out or blank, the issue is titled "Feed World". */
+    /**
+     * {@code title} is optional - left out or blank, the issue is titled "Feed World". {@code language}
+     * is not: left out or blank, the service refuses it ("Language is required") rather than guessing.
+     */
     @PostMapping(consumes = "multipart/form-data")
     public ResponseEntity<?> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam Integer year,
             @RequestParam Integer month,
-            @RequestParam(defaultValue = "English") PublicationLanguage language,
+            @RequestParam(required = false) PublicationLanguage language,
             @RequestParam(required = false) String title) {
         PublicationDetailDto created = publicationService.uploadPublication(file, year, month, language, title);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);

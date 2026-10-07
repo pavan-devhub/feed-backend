@@ -10,6 +10,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
@@ -26,6 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -41,15 +45,43 @@ class PublicationMigrationRunnerTest {
     Path storage;
 
     private final PublicationRepository repository = mock(PublicationRepository.class);
+    private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final List<Publication> rows = new ArrayList<>();
     private PublicationMigrationRunner runner;
 
     @BeforeEach
     void setUp() {
-        runner = new PublicationMigrationRunner(repository, new PdfProcessingServiceImpl());
+        runner = new PublicationMigrationRunner(repository, new PdfProcessingServiceImpl(), jdbc);
         ReflectionTestUtils.setField(runner, "baseDir", storage.toString());
         when(repository.findAll()).thenReturn(rows);
         when(repository.syncOrder(any(), anyInt())).thenReturn(0);
+    }
+
+    @Test
+    void theOldOneEditionPerMonthIndexIsDropped() {
+        when(jdbc.queryForList(anyString(), eq(String.class))).thenReturn(List.of("UKqxtw98ahdr1g9x6xwx0ck6qoh"));
+
+        runner.dropOneEditionPerMonthIndex();
+
+        verify(jdbc).execute("ALTER TABLE publications DROP INDEX `UKqxtw98ahdr1g9x6xwx0ck6qoh`");
+    }
+
+    @Test
+    void nothingIsDroppedWhenOnlyTheLanguageIndexExists() {
+        when(jdbc.queryForList(anyString(), eq(String.class))).thenReturn(List.of());
+
+        runner.dropOneEditionPerMonthIndex();
+
+        verify(jdbc, never()).execute(anyString());
+    }
+
+    @Test
+    void aFailedIndexCheckDoesNotStopTheOtherSteps() {
+        when(jdbc.queryForList(anyString(), eq(String.class))).thenThrow(new RuntimeException("no information_schema"));
+
+        runner.run();
+
+        verify(repository, atLeastOnce()).findAll();
     }
 
     @Test

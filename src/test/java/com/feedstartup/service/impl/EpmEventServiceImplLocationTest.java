@@ -8,8 +8,10 @@ import com.feedstartup.repository.EpmEventRepository;
 import com.feedstartup.repository.EpmEventUpdateRepository;
 import com.feedstartup.repository.EpmRegistrationRepository;
 import com.feedstartup.repository.EpmVolunteerRepository;
+import com.feedstartup.service.EpmAdminActivityService;
 import com.feedstartup.service.EpmCategoryService;
 import com.feedstartup.service.EpmVenueService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -31,7 +33,7 @@ class EpmEventServiceImplLocationTest {
     private final EpmVenueService venueService = mock(EpmVenueService.class);
     private final EpmEventServiceImpl service = new EpmEventServiceImpl(eventRepository,
             mock(EpmRegistrationRepository.class), mock(EpmVolunteerRepository.class), categoryService, venueService,
-            mock(EpmEventUpdateRepository.class));
+            mock(EpmEventUpdateRepository.class), mock(EpmAdminActivityService.class), mock(ApplicationEventPublisher.class));
 
     @BeforeEach
     void setUp() {
@@ -55,7 +57,7 @@ class EpmEventServiceImplLocationTest {
 
     @Test
     void creatingAnEventRecordsItsPlaceInTheVenueList() {
-        service.create(request(" Telangana ", "Warangal", "Hanamkonda", "Kakatiya Hall"));
+        service.create(request(" Telangana ", "Warangal", "Hanamkonda", "Kakatiya Hall"), 1L);
 
         verify(venueService).recordIfNew(new EpmLocationDto("Telangana", "Warangal", "Hanamkonda", "Kakatiya Hall"));
     }
@@ -65,10 +67,10 @@ class EpmEventServiceImplLocationTest {
         EpmEvent existing = event("Telangana", "Warangal", "Hanamkonda", "Kakatiya Hall");
         when(eventRepository.findById(7L)).thenReturn(Optional.of(existing));
 
-        service.update(7L, request("Telangana", "Warangal", "Hanamkonda", "KAKATIYA HALL"));
+        service.update(7L, request("Telangana", "Warangal", "Hanamkonda", "KAKATIYA HALL"), 1L);
         verify(venueService, never()).recordIfNew(any());
 
-        service.update(7L, request("Telangana", "Warangal", "Hanamkonda", "New Hall"));
+        service.update(7L, request("Telangana", "Warangal", "Hanamkonda", "New Hall"), 1L);
         verify(venueService).recordIfNew(new EpmLocationDto("Telangana", "Warangal", "Hanamkonda", "New Hall"));
     }
 

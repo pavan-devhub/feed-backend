@@ -8,17 +8,19 @@ import com.feedstartup.dto.YearSummaryDto;
 import com.feedstartup.exception.ResourceNotFoundException;
 import com.feedstartup.model.Publication;
 import com.feedstartup.model.PublicationLanguage;
+import com.feedstartup.realtime.LiveUpdateEvents;
 import com.feedstartup.repository.PublicationRepository;
 import com.feedstartup.service.PdfProcessingService;
 import com.feedstartup.service.PublicationService;
 import com.feedstartup.service.PublicationVisibility;
 import com.feedstartup.service.StoredFile;
+import com.feedstartup.util.Paging;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -65,21 +67,22 @@ public class PublicationServiceImpl implements PublicationService {
     private static final int MIN_YEAR = 1000;
     private static final int MAX_YEAR = 9999;
 
-    private static final int MAX_ADMIN_PAGE_SIZE = 100;
-
     private final PdfProcessingService pdfProcessingService;
     private final PublicationRepository publicationRepository;
     private final PublicationVisibility visibility;
+    // An issue uploaded or removed is announced so logged-in bells reload (see LiveUpdateBroadcaster).
+    private final ApplicationEventPublisher events;
 
     @Value("${feedworld.storage.base-dir}")
     private String baseDir;
 
     @Autowired
     public PublicationServiceImpl(PdfProcessingService pdfProcessingService, PublicationRepository publicationRepository,
-                                  PublicationVisibility visibility) {
+                                  PublicationVisibility visibility, ApplicationEventPublisher events) {
         this.pdfProcessingService = pdfProcessingService;
         this.publicationRepository = publicationRepository;
         this.visibility = visibility;
+        this.events = events;
     }
 
     @Override
@@ -241,8 +244,7 @@ public class PublicationServiceImpl implements PublicationService {
             fromMonth = Math.max(fromMonth, lastPublishedMonth + 1);
         }
 
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), MAX_ADMIN_PAGE_SIZE),
-                CATALOG_ORDER);
+        Pageable pageable = Paging.of(page, size, CATALOG_ORDER);
         Page<Publication> rows = fromMonth > toMonth
                 ? Page.empty(pageable)
                 : publicationRepository.findByYearAndMonthBetween(year, fromMonth, toMonth, pageable);
@@ -343,6 +345,7 @@ public class PublicationServiceImpl implements PublicationService {
             publication.setThumbnailFile(Files.exists(thumbnailTarget) ? thumbnailTarget.getFileName().toString() : null);
 
             publication = publicationRepository.save(publication);
+            events.publishEvent(new LiveUpdateEvents.PublicationsChanged());
             return toDetail(idOf(year, month, language), publication);
         } catch (IOException e) {
             deleteQuietly(pdfTarget);
@@ -409,6 +412,7 @@ public class PublicationServiceImpl implements PublicationService {
             deleteQuietly(publicationDir.resolve(publication.getThumbnailFile()));
         }
         publicationRepository.delete(publication);
+        events.publishEvent(new LiveUpdateEvents.PublicationsChanged());
     }
 
     private static void requireValidYear(Integer year) {

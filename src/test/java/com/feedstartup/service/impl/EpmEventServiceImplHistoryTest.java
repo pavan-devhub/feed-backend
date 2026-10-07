@@ -10,8 +10,10 @@ import com.feedstartup.repository.EpmEventRepository;
 import com.feedstartup.repository.EpmEventUpdateRepository;
 import com.feedstartup.repository.EpmRegistrationRepository;
 import com.feedstartup.repository.EpmVolunteerRepository;
+import com.feedstartup.service.EpmAdminActivityService;
 import com.feedstartup.service.EpmCategoryService;
 import com.feedstartup.service.EpmVenueService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -31,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -50,8 +53,10 @@ class EpmEventServiceImplHistoryTest {
     private final EpmVolunteerRepository volunteerRepository = mock(EpmVolunteerRepository.class);
     private final EpmCategoryService categoryService = mock(EpmCategoryService.class);
     private final EpmEventUpdateRepository updateRepository = mock(EpmEventUpdateRepository.class);
+    private final EpmAdminActivityService activityService = mock(EpmAdminActivityService.class);
     private final EpmEventServiceImpl service = new EpmEventServiceImpl(eventRepository, registrationRepository,
-            volunteerRepository, categoryService, mock(EpmVenueService.class), updateRepository);
+            volunteerRepository, categoryService, mock(EpmVenueService.class), updateRepository, activityService,
+            mock(ApplicationEventPublisher.class));
 
     private final EpmEvent event = new EpmEvent();
     private final List<EpmEventUpdate> logged = new ArrayList<>();
@@ -84,7 +89,7 @@ class EpmEventServiceImplHistoryTest {
 
     @Test
     void editingTheVenueAndTimeLogsBothAndTheStatusSaysWhatChanged() {
-        service.update(7L, request("Bharat Mandapam", EVENT_DATE.toString(), "10:00 AM - 05:00 PM"));
+        service.update(7L, request("Bharat Mandapam", EVENT_DATE.toString(), "10:00 AM - 05:00 PM"), 1L);
 
         assertEquals(List.of(Field.TIME, Field.VENUE), logged.stream().map(EpmEventUpdate::getField).toList());
         assertEquals("Pragati Maidan", logged.get(1).getOldValue());
@@ -99,7 +104,7 @@ class EpmEventServiceImplHistoryTest {
 
     @Test
     void reschedulingMovesTheRegistrationsAndVolunteersCopyOfTheDateToo() {
-        service.update(7L, request("Pragati Maidan", LATER.toString(), "09:00 AM - 04:00 PM"));
+        service.update(7L, request("Pragati Maidan", LATER.toString(), "09:00 AM - 04:00 PM"), 1L);
 
         verify(registrationRepository).syncEventSnapshot(7L, "New Delhi", "Delhi", LATER);
         verify(volunteerRepository).syncEventSnapshot(7L, "New Delhi", "Delhi", LATER);
@@ -107,7 +112,7 @@ class EpmEventServiceImplHistoryTest {
 
     @Test
     void cancellingLogsTheReasonAndCannotBeDoneTwice() {
-        EpmEventDto cancelled = service.cancel(7L, "  Heavy rain forecast ");
+        EpmEventDto cancelled = service.cancel(7L, "  Heavy rain forecast ", 1L);
 
         assertTrue(cancelled.isCancelled());
         ArgumentCaptor<EpmEventUpdate> saved = ArgumentCaptor.forClass(EpmEventUpdate.class);
@@ -115,22 +120,37 @@ class EpmEventServiceImplHistoryTest {
         assertEquals(Field.CANCELLED, saved.getValue().getField());
         assertEquals("Heavy rain forecast", saved.getValue().getNewValue());
 
-        assertThrows(ConflictException.class, () -> service.cancel(7L, null));
+        assertThrows(ConflictException.class, () -> service.cancel(7L, null, 1L));
     }
 
     @Test
     void restoringACancelledEventLogsIt() {
-        service.cancel(7L, " ");
+        service.cancel(7L, " ", 1L);
         assertNull(logged.get(0).getNewValue());
 
-        assertFalse(service.restore(7L).isCancelled());
+        assertFalse(service.restore(7L, 1L).isCancelled());
         assertEquals(Field.RESTORED, logged.get(1).getField());
-        assertThrows(ConflictException.class, () -> service.restore(7L));
+        assertThrows(ConflictException.class, () -> service.restore(7L, 1L));
+    }
+
+    @Test
+    void everyActionGoesToTheActivityLogUnderTheAdminWhoTookIt() {
+        service.update(7L, request("Bharat Mandapam", EVENT_DATE.toString(), "09:00 AM - 04:00 PM"), 3L);
+        verify(activityService).recordEdit(eq(event), any(), eq(false), eq(3L));
+
+        service.cancel(7L, " Heavy rain forecast ", 3L);
+        verify(activityService).recordCancelled(event, "Heavy rain forecast", 3L);
+
+        service.restore(7L, 3L);
+        verify(activityService).recordReinstated(event, 3L);
+
+        service.delete(7L, 3L);
+        verify(activityService).recordDeleted(event, 3L);
     }
 
     @Test
     void anEditThatChangesNothingLogsNothing() {
-        service.update(7L, request("PRAGATI MAIDAN", EVENT_DATE.toString(), "09:00 AM - 04:00 PM"));
+        service.update(7L, request("PRAGATI MAIDAN", EVENT_DATE.toString(), "09:00 AM - 04:00 PM"), 1L);
         assertTrue(logged.isEmpty());
     }
 
@@ -138,10 +158,10 @@ class EpmEventServiceImplHistoryTest {
     void aPreviousEpmCannotBeEditedCancelledOrReinstated() {
         event.setEventDate(LocalDate.now().minusDays(1));
 
-        assertThrows(ConflictException.class, () -> service.update(7L, request("Bharat Mandapam", LATER.toString(), null)));
-        assertThrows(ConflictException.class, () -> service.cancel(7L, null));
+        assertThrows(ConflictException.class, () -> service.update(7L, request("Bharat Mandapam", LATER.toString(), null), 1L));
+        assertThrows(ConflictException.class, () -> service.cancel(7L, null, 1L));
         event.setCancelled(true);
-        assertThrows(ConflictException.class, () -> service.restore(7L));
+        assertThrows(ConflictException.class, () -> service.restore(7L, 1L));
         assertTrue(logged.isEmpty());
         verify(eventRepository, never()).save(any(EpmEvent.class));
     }
@@ -149,14 +169,14 @@ class EpmEventServiceImplHistoryTest {
     @Test
     void anEpmHeldTodayIsStillUpcomingAndEditable() {
         event.setEventDate(LocalDate.now());
-        service.update(7L, request("Bharat Mandapam", LocalDate.now().toString(), "09:00 AM - 04:00 PM"));
+        service.update(7L, request("Bharat Mandapam", LocalDate.now().toString(), "09:00 AM - 04:00 PM"), 1L);
         assertEquals(List.of(Field.VENUE), logged.stream().map(EpmEventUpdate::getField).toList());
     }
 
     @Test
     void anUpcomingEpmCannotBeMovedToADateThatHasPassed() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service.update(7L, request("Pragati Maidan", LocalDate.now().minusDays(3).toString(), "09:00 AM - 04:00 PM")));
+                () -> service.update(7L, request("Pragati Maidan", LocalDate.now().minusDays(3).toString(), "09:00 AM - 04:00 PM"), 1L));
         assertTrue(e.getMessage().contains("already passed"), e.getMessage());
         verify(eventRepository, never()).save(any(EpmEvent.class));
     }

@@ -3,13 +3,16 @@ package com.feedstartup.service.impl;
 import com.feedstartup.dto.EpmCategoryAdminDto;
 import com.feedstartup.dto.EpmCategoryDto;
 import com.feedstartup.dto.EpmCategoryRequestDto;
+import com.feedstartup.dto.PageDto;
 import com.feedstartup.exception.ConflictException;
 import com.feedstartup.exception.ResourceNotFoundException;
 import com.feedstartup.model.EpmCategory;
 import com.feedstartup.repository.EpmCategoryRepository;
 import com.feedstartup.repository.EpmEventRepository;
 import com.feedstartup.service.EpmCategoryService;
+import com.feedstartup.util.Paging;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +23,9 @@ import java.util.stream.Collectors;
 
 @Service
 public class EpmCategoryServiceImpl implements EpmCategoryService {
+
+    /** The order every category list uses; the id breaks ties so paging is stable. */
+    private static final Sort DISPLAY_ORDER = Sort.by("displayOrder", "name", "id");
 
     private final EpmCategoryRepository categoryRepository;
     private final EpmEventRepository eventRepository;
@@ -45,6 +51,12 @@ public class EpmCategoryServiceImpl implements EpmCategoryService {
                         eventRepository.countByCategory(c.getName()),
                         eventRepository.countByCategoryAndEventDateGreaterThanEqual(c.getName(), today)))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public PageDto<EpmCategoryAdminDto> pageAdmin(int page, int size) {
+        // Only this page's categories have their EPMs counted.
+        return PageDto.of(categoryRepository.findAll(Paging.of(page, size, DISPLAY_ORDER)), this::toAdminDto);
     }
 
     @Override

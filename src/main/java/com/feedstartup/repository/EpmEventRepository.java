@@ -3,6 +3,7 @@ package com.feedstartup.repository;
 import com.feedstartup.dto.EpmLocationDto;
 import com.feedstartup.model.EpmEvent;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -11,14 +12,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+// JpaSpecificationExecutor backs the EPM lists' filters and paging (see EpmEventFilter).
 @Repository
-public interface EpmEventRepository extends JpaRepository<EpmEvent, Long> {
-
-    List<EpmEvent> findByCancelledFalseAndEventDateGreaterThanEqualOrderByEventDateAsc(LocalDate from);
-
-    List<EpmEvent> findByCancelledFalseAndEventDateLessThanOrderByEventDateDesc(LocalDate before);
-
-    List<EpmEvent> findByCancelledFalseOrderByEventDateDesc();
+public interface EpmEventRepository extends JpaRepository<EpmEvent, Long>, JpaSpecificationExecutor<EpmEvent> {
 
     Optional<EpmEvent> findByIdAndCancelledFalse(Long id);
 
@@ -27,13 +23,6 @@ public interface EpmEventRepository extends JpaRepository<EpmEvent, Long> {
     long countByCancelledFalseAndEventDateGreaterThanEqual(LocalDate from);
 
     long countByCancelledTrue();
-
-    // Admin views include cancelled events, which the public lists above hide.
-    List<EpmEvent> findByEventDateGreaterThanEqualOrderByEventDateAsc(LocalDate from);
-
-    List<EpmEvent> findByEventDateLessThanOrderByEventDateDesc(LocalDate before);
-
-    List<EpmEvent> findAllByOrderByEventDateDesc();
 
     // EPMs held within a date range (both ends included) - the "new EPM" announcements, which go
     // out 15 days before each EPM (see EpmNotificationSchedule).

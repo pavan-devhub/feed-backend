@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 // JpaSpecificationExecutor backs the admin list's paging and filters (see EpmSubmissionFilter).
@@ -16,6 +17,8 @@ import java.util.List;
 public interface EpmVolunteerRepository extends JpaRepository<EpmVolunteer, Long>, JpaSpecificationExecutor<EpmVolunteer> {
 
     boolean existsByEpmEventIdAndMobileNumber(Long epmEventId, String mobileNumber);
+
+    List<EpmVolunteer> findByEpmEventId(Long epmEventId);
 
     // One person's own submissions: those sent while logged in, plus older or signed-out ones
     // made with the account's email or mobile number.
@@ -31,7 +34,7 @@ public interface EpmVolunteerRepository extends JpaRepository<EpmVolunteer, Long
 
     long countByCreatedAtGreaterThanEqual(LocalDateTime from);
 
-    /** [epmEventId, count] pairs, one per event with at least one volunteer. */
-    @Query("SELECT v.epmEventId, COUNT(v) FROM EpmVolunteer v GROUP BY v.epmEventId")
-    List<Object[]> countPerEvent();
+    /** [epmEventId, count] pairs for the given events - one per event with at least one volunteer. */
+    @Query("SELECT v.epmEventId, COUNT(v) FROM EpmVolunteer v WHERE v.epmEventId IN :epmEventIds GROUP BY v.epmEventId")
+    List<Object[]> countPerEvent(Collection<Long> epmEventIds);
 }

@@ -4,6 +4,7 @@ import com.feedstartup.dto.UserTypeDto;
 import com.feedstartup.model.UserType;
 
 import java.util.List;
+import java.util.Optional;
 
 /** The user types people can register as - backed by the {@code user_types} table. */
 public interface UserTypeService {
@@ -26,4 +27,10 @@ public interface UserTypeService {
      * IllegalArgumentException, listing the valid choices, if it isn't one the EPM forms offer.
      */
     UserType resolveEpmParticipantType(String requested);
+
+    /**
+     * The participant type {@code name} names, matched ignoring case - or empty if it isn't one the
+     * EPM forms offer (e.g. an account's "Government" user type).
+     */
+    Optional<UserType> findEpmParticipantType(String name);
 }

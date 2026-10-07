@@ -1,8 +1,8 @@
 package com.feedstartup.service;
 
+import com.feedstartup.util.Paging;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -27,9 +27,6 @@ public record EpmSubmissionFilter(Long epmEventId, LocalDate eventDate, LocalDat
 
     /** Newest first; the id breaks ties so paging is stable. */
     public static final Sort NEWEST_FIRST = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
-
-    /** The largest page the admin screens can ask for. */
-    public static final int MAX_PAGE_SIZE = 100;
 
     private static final List<String> SEARCHED = List.of("fullName", "mobileNumber", "email", "state", "district", "eventCity");
 
@@ -58,9 +55,9 @@ public record EpmSubmissionFilter(Long epmEventId, LocalDate eventDate, LocalDat
         };
     }
 
-    /** {@code page} is 0-based; out-of-range values are pulled back in. */
+    /** {@code page} is 0-based; out-of-range values are pulled back in (see Paging). */
     public static Pageable pageRequest(int page, int size) {
-        return PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), MAX_PAGE_SIZE), NEWEST_FIRST);
+        return Paging.of(page, size, NEWEST_FIRST);
     }
 
     // So a search for "50%" or "a_b" matches those characters literally.

@@ -4,6 +4,7 @@ import com.feedstartup.dto.LoginDto;
 import com.feedstartup.dto.UserRegistrationDto;
 import com.feedstartup.exception.ResourceNotFoundException;
 import com.feedstartup.model.User;
+import com.feedstartup.repository.SystemAdminRepository;
 import com.feedstartup.repository.UserRepository;
 import com.feedstartup.service.StoredFile;
 import com.feedstartup.service.UserService;
@@ -36,18 +37,21 @@ public class UserServiceImpl implements UserService {
             "image/avif", ".avif"
     );
 
+    // Every account in the users table; admins are SystemAdmins (see SystemAdminServiceImpl).
+    private static final String USER_ROLE = "USER";
+
     private final UserRepository userRepository;
+    private final SystemAdminRepository systemAdminRepository;
     private final UserTypeService userTypeService;
 
     @Value("${feedworld.storage.profile-images-dir}")
     private String profileImagesDir;
 
-    @Value("${feedworld.admin.email}")
-    private String adminEmail;
-
     @Autowired
-    public UserServiceImpl(UserRepository userRepository, UserTypeService userTypeService) {
+    public UserServiceImpl(UserRepository userRepository, SystemAdminRepository systemAdminRepository,
+                           UserTypeService userTypeService) {
         this.userRepository = userRepository;
+        this.systemAdminRepository = systemAdminRepository;
         this.userTypeService = userTypeService;
     }
 
@@ -61,11 +65,14 @@ public class UserServiceImpl implements UserService {
         // Only a type listed (and active) in user_types is accepted, stored under its canonical name.
         String userType = userTypeService.resolveActive(registrationDto.getUserType());
 
-        // Check if email or phone already exists
-        if (userRepository.existsByEmail(registrationDto.getEmail())) {
+        // Check if email or phone already exists - an admin's counts too, since the login page
+        // takes either (the message doesn't say whose it is).
+        if (userRepository.existsByEmail(registrationDto.getEmail())
+                || systemAdminRepository.existsByEmailIgnoreCase(registrationDto.getEmail().trim())) {
             throw new IllegalArgumentException("Email is already registered");
         }
-        if (userRepository.existsByPhone(registrationDto.getPhone())) {
+        if (userRepository.existsByPhone(registrationDto.getPhone())
+                || systemAdminRepository.existsByMobileNumber(registrationDto.getPhone().trim())) {
             throw new IllegalArgumentException("Phone number is already registered");
         }
 
@@ -87,7 +94,7 @@ public class UserServiceImpl implements UserService {
         user.setDistrict(registrationDto.getDistrict());
         user.setCity(registrationDto.getCity());
         user.setUserType(userType);
-        user.setRole(resolveRole(registrationDto.getEmail()));
+        user.setRole(USER_ROLE);
 
         return userRepository.save(user);
     }
@@ -101,18 +108,14 @@ public class UserServiceImpl implements UserService {
             throw new IllegalArgumentException("Invalid password");
         }
 
-        // Re-checked on every login so a role change (or a null from before this existed) heals.
-        String expectedRole = resolveRole(user.getEmail());
-        if (!expectedRole.equals(user.getRole())) {
-            user.setRole(expectedRole);
+        // Admins live in system_admins now, so every account here is a USER - healed on login for
+        // a null role from before the column existed, or the ADMIN of the old email-based admin.
+        if (!USER_ROLE.equals(user.getRole())) {
+            user.setRole(USER_ROLE);
             user = userRepository.save(user);
         }
 
         return user;
-    }
-
-    private String resolveRole(String email) {
-        return email != null && email.equalsIgnoreCase(adminEmail) ? "ADMIN" : "USER";
     }
 
     @Override

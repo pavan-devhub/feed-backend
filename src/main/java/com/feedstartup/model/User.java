@@ -56,9 +56,10 @@ public class User {
     // hasn't uploaded one (the navbar falls back to showing their initial in that case).
     private String profileImagePath;
 
-    // Access-control role (ADMIN or USER), distinct from userType above. Left nullable so
-    // ddl-auto=update doesn't choke on rows created before this column existed; UserServiceImpl
-    // heals a null/stale role on every login.
+    // Access-control role, distinct from userType above - always USER: admins are SystemAdmins, in
+    // their own table. (Accounts made ADMIN by the old email rule were moved back to USER by
+    // SystemAdminBootstrapRunner.) Left nullable so ddl-auto=update doesn't choke on rows created
+    // before this column existed; UserServiceImpl heals a null/stale role on every login.
     private String role = "USER";
 
     @Column(nullable = false, updatable = false)

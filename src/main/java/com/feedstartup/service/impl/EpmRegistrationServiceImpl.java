@@ -7,6 +7,7 @@ import com.feedstartup.exception.ResourceNotFoundException;
 import com.feedstartup.model.EpmEvent;
 import com.feedstartup.model.EpmRegistration;
 import com.feedstartup.model.UserType;
+import com.feedstartup.realtime.LiveUpdateEvents;
 import com.feedstartup.repository.EpmEventRepository;
 import com.feedstartup.repository.EpmRegistrationRepository;
 import com.feedstartup.service.EpmRegistrationService;
@@ -14,6 +15,7 @@ import com.feedstartup.service.EpmSignUpOwner;
 import com.feedstartup.service.EpmSubmissionFilter;
 import com.feedstartup.service.UserTypeService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -27,14 +29,17 @@ public class EpmRegistrationServiceImpl implements EpmRegistrationService {
     private final EpmEventRepository epmEventRepository;
     private final UserTypeService userTypeService;
     private final EpmSignUpOwner signUpOwner;
+    private final ApplicationEventPublisher events;
 
     @Autowired
     public EpmRegistrationServiceImpl(EpmRegistrationRepository epmRegistrationRepository, EpmEventRepository epmEventRepository,
-                                    UserTypeService userTypeService, EpmSignUpOwner signUpOwner) {
+                                    UserTypeService userTypeService, EpmSignUpOwner signUpOwner,
+                                    ApplicationEventPublisher events) {
         this.epmRegistrationRepository = epmRegistrationRepository;
         this.epmEventRepository = epmEventRepository;
         this.userTypeService = userTypeService;
         this.signUpOwner = signUpOwner;
+        this.events = events;
     }
 
     @Override
@@ -67,7 +72,10 @@ public class EpmRegistrationServiceImpl implements EpmRegistrationService {
         registration.setParticipantType(participantType);
         registration.setConsent(dto.isConsent());
 
-        return EpmRegistrationDto.from(epmRegistrationRepository.save(registration));
+        EpmRegistration saved = epmRegistrationRepository.save(registration);
+        // Live: the EPM lists' sign-up counts, and this person's own bell / Status of Activities.
+        events.publishEvent(new LiveUpdateEvents.EpmSignedUp(saved.getEpmEventId(), saved.getUserId()));
+        return EpmRegistrationDto.from(saved);
     }
 
     @Override

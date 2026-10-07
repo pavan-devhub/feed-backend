@@ -2,6 +2,7 @@ package com.feedstartup.controller;
 
 import com.feedstartup.dto.EpmCategoryAdminDto;
 import com.feedstartup.dto.EpmCategoryRequestDto;
+import com.feedstartup.dto.PageDto;
 import com.feedstartup.service.EpmCategoryService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,9 +25,18 @@ public class AdminEpmCategoryController {
         this.epmCategoryService = epmCategoryService;
     }
 
+    /** Every category - the EPM Events screen's category choices and colours. */
     @GetMapping
     public ResponseEntity<List<EpmCategoryAdminDto>> list() {
         return ResponseEntity.ok(epmCategoryService.listAdmin());
+    }
+
+    /** The Categories table, a page at a time: {@code page} is 0-based, {@code size} capped at Paging.MAX_PAGE_SIZE. */
+    @GetMapping("/page")
+    public ResponseEntity<PageDto<EpmCategoryAdminDto>> page(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(epmCategoryService.pageAdmin(page, size));
     }
 
     @PostMapping(consumes = "application/json")

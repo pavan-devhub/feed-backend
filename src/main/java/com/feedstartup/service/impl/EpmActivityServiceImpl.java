@@ -3,6 +3,7 @@ package com.feedstartup.service.impl;
 import com.feedstartup.dto.EpmActivityDto;
 import com.feedstartup.dto.EpmEventDto;
 import com.feedstartup.dto.EpmMyActivitiesDto;
+import com.feedstartup.dto.EpmSignUpDetailsDto;
 import com.feedstartup.exception.ResourceNotFoundException;
 import com.feedstartup.model.EpmRegistration;
 import com.feedstartup.model.EpmVolunteer;
@@ -13,6 +14,7 @@ import com.feedstartup.repository.EpmVolunteerRepository;
 import com.feedstartup.repository.UserRepository;
 import com.feedstartup.service.EpmActivityService;
 import com.feedstartup.service.EpmEventService;
+import com.feedstartup.service.UserTypeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -21,8 +23,11 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class EpmActivityServiceImpl implements EpmActivityService {
@@ -31,16 +36,19 @@ public class EpmActivityServiceImpl implements EpmActivityService {
     private final EpmRegistrationRepository registrationRepository;
     private final EpmVolunteerRepository volunteerRepository;
     private final EpmEventService epmEventService;
+    private final UserTypeService userTypeService;
 
     @Autowired
     public EpmActivityServiceImpl(UserRepository userRepository,
                                   EpmRegistrationRepository registrationRepository,
                                   EpmVolunteerRepository volunteerRepository,
-                                  EpmEventService epmEventService) {
+                                  EpmEventService epmEventService,
+                                  UserTypeService userTypeService) {
         this.userRepository = userRepository;
         this.registrationRepository = registrationRepository;
         this.volunteerRepository = volunteerRepository;
         this.epmEventService = epmEventService;
+        this.userTypeService = userTypeService;
     }
 
     @Override
@@ -75,6 +83,23 @@ public class EpmActivityServiceImpl implements EpmActivityService {
                         .filter(upcoming)
                         .sorted(soonestFirst)
                         .toList());
+    }
+
+    @Override
+    public EpmSignUpDetailsDto signUpDetails(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        String fullName = Stream.of(user.getFirstName(), user.getMiddleName(), user.getLastName())
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(part -> !part.isEmpty())
+                .collect(Collectors.joining(" "));
+        // Only a user type the EPM forms offer carries over (an "International Buyer" account picks one).
+        String participantType = userTypeService.findEpmParticipantType(user.getUserType())
+                .map(UserType::getName)
+                .orElse(null);
+        return new EpmSignUpDetailsDto(fullName, user.getPhone(), user.getEmail(), user.getState(),
+                user.getDistrict(), participantType);
     }
 
     private static String typeName(UserType type) {

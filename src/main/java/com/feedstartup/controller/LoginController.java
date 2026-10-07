@@ -3,9 +3,13 @@ package com.feedstartup.controller;
 import com.feedstartup.dto.LoginDto;
 import com.feedstartup.exception.ResourceNotFoundException;
 import com.feedstartup.exception.TooManySessionsException;
+import com.feedstartup.model.SystemAdmin;
+import com.feedstartup.model.SystemAdminSession;
 import com.feedstartup.model.User;
 import com.feedstartup.model.UserSession;
 import com.feedstartup.service.SessionService;
+import com.feedstartup.service.SystemAdminService;
+import com.feedstartup.service.SystemAdminSessionService;
 import com.feedstartup.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -18,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api")
@@ -27,18 +32,35 @@ public class LoginController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
     private final SessionService sessionService;
+    private final SystemAdminService systemAdminService;
+    private final SystemAdminSessionService systemAdminSessionService;
 
     @Autowired
-    public LoginController(UserService userService, JwtUtil jwtUtil, SessionService sessionService) {
+    public LoginController(UserService userService, JwtUtil jwtUtil, SessionService sessionService,
+                           SystemAdminService systemAdminService, SystemAdminSessionService systemAdminSessionService) {
         this.userService = userService;
         this.jwtUtil = jwtUtil;
         this.sessionService = sessionService;
+        this.systemAdminService = systemAdminService;
+        this.systemAdminSessionService = systemAdminSessionService;
     }
 
     @PostMapping(value = "/login", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> loginUser(@Valid @RequestBody LoginDto loginDto, HttpServletRequest request) {
 
         try {
+            // The login box takes an admin's username, email or mobile number too - an admin
+            // account is checked first, and anything else is a user's login as before.
+            Optional<SystemAdmin> admin = systemAdminService.authenticate(loginDto.getEmail(), loginDto.getPassword());
+            if (admin.isPresent()) {
+                SystemAdminSession session = systemAdminSessionService.createSession(
+                        admin.get(), request.getHeader("User-Agent"), request.getRemoteAddr());
+                Map<String, Object> response = new HashMap<>(AuthController.adminAccount(admin.get()));
+                response.put("message", "Login successful");
+                response.put("token", jwtUtil.generateAdminToken(admin.get(), session.getJti()));
+                return ResponseEntity.ok(response);
+            }
+
             User user = userService.loginUser(loginDto);
 
             // One row per device - this both enforces the concurrent-device cap and gives us a jti

@@ -7,7 +7,11 @@ import jakarta.validation.constraints.Size;
  * (parsed in the service), matching how dates are already handled in UserRegistrationDto#dob. */
 public class EpmEventRequestDto {
 
+    // The 255-character limits match the epm_events columns, so an over-long value is a 400 here
+    // rather than a database error.
+
     @NotBlank(message = "Title is required")
+    @Size(max = 255, message = "Title must be at most 255 characters")
     private String title;
 
     // Must match the name of one of the admin-managed categories (see GET /api/epm/events/categories)
@@ -15,20 +19,25 @@ public class EpmEventRequestDto {
     private String category;
 
     @NotBlank(message = "State is required")
+    @Size(max = 255, message = "State must be at most 255 characters")
     private String state;
 
     @NotBlank(message = "District is required")
+    @Size(max = 255, message = "District must be at most 255 characters")
     private String district;
 
     @NotBlank(message = "City is required")
+    @Size(max = 255, message = "City must be at most 255 characters")
     private String city;
 
     @NotBlank(message = "Venue is required")
+    @Size(max = 255, message = "Venue must be at most 255 characters")
     private String venue;
 
     @NotBlank(message = "Event date is required")
     private String eventDate;
 
+    @Size(max = 255, message = "Time must be at most 255 characters")
     private String timeRange;
 
     @Size(max = 2000, message = "Description must be at most 2000 characters")

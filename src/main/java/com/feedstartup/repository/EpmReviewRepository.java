@@ -10,9 +10,9 @@ import java.util.List;
 @Repository
 public interface EpmReviewRepository extends JpaRepository<EpmReview, Long> {
 
-    List<EpmReview> findAllByOrderByDisplayOrderAscCreatedAtDesc();
-
     List<EpmReview> findByPublishedTrueOrderByDisplayOrderAscCreatedAtDesc();
+
+    long countByPublishedTrue();
 
     @Query("SELECT COALESCE(MAX(r.displayOrder), -1) FROM EpmReview r")
     int maxDisplayOrder();

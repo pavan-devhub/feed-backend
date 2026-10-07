@@ -1,13 +1,13 @@
 package com.feedstartup.security;
 
 import com.feedstartup.service.SessionService;
+import com.feedstartup.service.SystemAdminSessionService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -27,6 +27,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Autowired
     private SessionService sessionService;
 
+    @Autowired
+    private SystemAdminSessionService systemAdminSessionService;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
@@ -36,28 +39,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (jwt != null && jwtUtil.validateToken(jwt)) {
                 String jti = jwtUtil.extractJti(jwt);
 
-                // The JWT itself is long-lived; the UserSession row is the real source of truth for
+                // The JWT itself is long-lived; the session row is the real source of truth for
                 // whether this device is still logged in (it's removed on logout or remote revoke).
+                // Which table holds it also decides the role: a user's login lives in
+                // user_sessions, an admin's in system_admin_sessions - so a user's token is never
+                // an admin's, whatever role its claims carry (including tokens of the accounts that
+                // were admins before system_admins existed). ROLE_ADMIN is what SecurityConfig's
+                // hasRole("ADMIN") checks.
                 if (sessionService.isActive(jti)) {
-                    String email = jwtUtil.extractEmail(jwt);
-                    Long userId = jwtUtil.extractUserId(jwt);
-                    String role = jwtUtil.extractRole(jwt);
-
-                    // Granted as ROLE_<role> (e.g. ROLE_ADMIN) so SecurityConfig's hasRole("ADMIN")
-                    // matchers can gate admin-only endpoints. Tokens issued before the role claim
-                    // existed simply carry no authorities, same as before this feature.
-                    List<GrantedAuthority> authorities = StringUtils.hasText(role)
-                            ? List.of(new SimpleGrantedAuthority("ROLE_" + role))
-                            : List.of();
-
-                    // Create an authentication token with email as principal and userId as credential/detail
-                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                            email, userId, authorities);
-
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    // The user's email as principal and userId as credentials.
+                    authenticate(request, jwtUtil.extractEmail(jwt), jwtUtil.extractUserId(jwt), "ROLE_USER");
                     sessionService.touch(jti);
+                } else if (systemAdminSessionService.isActive(jti)) {
+                    // The admin's username as principal and adminId as credentials.
+                    authenticate(request, jwtUtil.extractSubject(jwt), jwtUtil.extractAdminId(jwt), "ROLE_ADMIN");
+                    systemAdminSessionService.touch(jti);
                 }
             }
         } catch (Exception e) {
@@ -65,6 +61,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void authenticate(HttpServletRequest request, String principal, Long accountId, String role) {
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                principal, accountId, List.of(new SimpleGrantedAuthority(role)));
+        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
     }
 
     private String parseJwt(HttpServletRequest request) {

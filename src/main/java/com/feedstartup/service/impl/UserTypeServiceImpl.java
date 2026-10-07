@@ -7,6 +7,7 @@ import com.feedstartup.service.UserTypeService;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,10 +45,14 @@ public class UserTypeServiceImpl implements UserTypeService {
 
     @Override
     public UserType resolveEpmParticipantType(String requested) {
-        String name = requested == null ? "" : requested.trim();
-        return userTypeRepository.findByNameIgnoreCase(name)
-                .filter(type -> type.getEpmOrder() != null)
+        return findEpmParticipantType(requested)
                 .orElseThrow(() -> new IllegalArgumentException("Participant type must be one of: "
                         + listEpmParticipantTypes().stream().map(UserTypeDto::name).collect(Collectors.joining(", "))));
+    }
+
+    @Override
+    public Optional<UserType> findEpmParticipantType(String name) {
+        return userTypeRepository.findByNameIgnoreCase(name == null ? "" : name.trim())
+                .filter(type -> type.getEpmOrder() != null);
     }
 }

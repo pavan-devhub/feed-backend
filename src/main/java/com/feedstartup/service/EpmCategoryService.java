@@ -3,6 +3,7 @@ package com.feedstartup.service;
 import com.feedstartup.dto.EpmCategoryAdminDto;
 import com.feedstartup.dto.EpmCategoryDto;
 import com.feedstartup.dto.EpmCategoryRequestDto;
+import com.feedstartup.dto.PageDto;
 
 import java.util.List;
 
@@ -13,6 +14,9 @@ public interface EpmCategoryService {
 
     /** Every category with how many events use it. */
     List<EpmCategoryAdminDto> listAdmin();
+
+    /** The admin's Categories table: the same rows a page at a time, {@code page} 0-based. */
+    PageDto<EpmCategoryAdminDto> pageAdmin(int page, int size);
 
     EpmCategoryAdminDto create(EpmCategoryRequestDto dto);
 

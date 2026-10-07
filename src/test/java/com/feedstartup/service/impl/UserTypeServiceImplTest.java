@@ -63,6 +63,15 @@ class UserTypeServiceImplTest {
     }
 
     @Test
+    void findsOnlyTypesTheEpmFormsOffer() {
+        student.setEpmOrder(3);
+
+        assertEquals(Optional.of(student), service.findEpmParticipantType(" student "));
+        assertEquals(Optional.empty(), service.findEpmParticipantType("Business Collaborator"));
+        assertEquals(Optional.empty(), service.findEpmParticipantType(null));
+    }
+
+    @Test
     void anEmptyTableAcceptsNothing() {
         when(repository.findByNameIgnoreCase(anyString())).thenReturn(Optional.empty());
         assertThrows(IllegalArgumentException.class, () -> service.resolveActive("Student"));

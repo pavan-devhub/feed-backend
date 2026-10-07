@@ -1,21 +1,29 @@
 package com.feedstartup.exception;
 
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidationExceptions(MethodArgumentNotValidException ex) {
@@ -40,9 +48,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
     }
 
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<Map<String, String>> handleForbiddenException(ForbiddenException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", ex.getMessage()));
+    }
+
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<Map<String, String>> handleConflictException(ConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage()));
+    }
+
+    // {error: "That username is already taken.", fields: {username: "Already taken"}}
+    @ExceptionHandler(AlreadyTakenException.class)
+    public ResponseEntity<Map<String, Object>> handleAlreadyTakenException(AlreadyTakenException ex) {
+        Map<String, String> fields = new LinkedHashMap<>();
+        ex.getFields().forEach(field -> fields.put(field, "Already taken"));
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage(), "fields", fields));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
@@ -54,6 +75,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
     public ResponseEntity<Map<String, String>> handleBadInput(Exception ex) {
         return ResponseEntity.badRequest().body(Map.of("error", "The request could not be read - check the values sent"));
+    }
+
+    // A path no controller or static resource serves (e.g. /api/does-not-exist) - without this the
+    // catch-all below would answer it as a 500.
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, String>> handleNoResource(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Not found"));
+    }
+
+    // A required parameter or file left out (e.g. the admin publications list without ?year=, or an
+    // upload with no file) is the caller's mistake, not a server error.
+    @ExceptionHandler({MissingServletRequestParameterException.class, MissingServletRequestPartException.class})
+    public ResponseEntity<Map<String, String>> handleMissingInput(Exception ex) {
+        String name = ex instanceof MissingServletRequestParameterException missing
+                ? missing.getParameterName()
+                : ((MissingServletRequestPartException) ex).getRequestPartName();
+        return ResponseEntity.badRequest().body(Map.of("error", "\"" + name + "\" is required"));
     }
 
     @ExceptionHandler(Exception.class)
@@ -71,8 +109,11 @@ public class GlobalExceptionHandler {
         if (response.getContentType() != null) {
             response.reset();
         }
+        // The details stay in the server log: an unexpected exception's message can carry SQL,
+        // table names or file paths, none of which the browser should see.
+        log.error("Unhandled error", ex);
         Map<String, String> errorResponse = new HashMap<>();
-        errorResponse.put("error", "An error occurred: " + ex.getMessage());
+        errorResponse.put("error", "Something went wrong on the server. Please try again.");
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }
 }
