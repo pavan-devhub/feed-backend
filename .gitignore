@@ -12,3 +12,6 @@ target/
 *.iml
 # Local test logins - never commit
 test-accounts.local.md
+
+# Database backups - full copies of the data (users, password hashes, sessions) - never commit
+storage/db-backups/
