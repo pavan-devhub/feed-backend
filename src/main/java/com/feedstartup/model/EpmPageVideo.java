@@ -5,9 +5,9 @@ import java.time.LocalDateTime;
 
 /**
  * An admin-uploaded video on the EPM page - today just the full-width one under the navbar
- * ({@link #HERO}). Only its name and metadata live here; the bytes sit directly in the EPM storage
- * root ({@code epm.storage.video-dir}), beside the gallery/ folder rather than inside it. Until a
- * row exists the page plays its built-in video, and deleting the row goes back to that.
+ * ({@link #HERO}). Only its name and metadata live here; the bytes sit in the EPM video folder
+ * ({@code epm.storage.video-dir}), beside the gallery/ and carousel/ folders. Until a row exists
+ * the page plays its built-in video, and deleting the row goes back to that.
  */
 @Entity
 @Table(name = "epm_page_videos")
@@ -20,7 +20,7 @@ public class EpmPageVideo {
     @Column(length = 64)
     private String slot;
 
-    // Name of the file on disk, resolved against the EPM storage root.
+    // Name of the file on disk, resolved against the EPM video folder.
     @Column(name = "file_name", nullable = false)
     private String fileName;
 

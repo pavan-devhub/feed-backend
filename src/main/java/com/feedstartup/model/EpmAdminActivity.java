@@ -53,7 +53,8 @@ public class EpmAdminActivity {
     @Column(name = "epm_event_id", nullable = false, updatable = false)
     private Long epmEventId;
 
-    // The EPM as it stood right after the action (just before it, for DELETED).
+    // The EPM as it stood right after the action (just before it, for DELETED). The log lists an
+    // existing EPM as it stands now instead (see EpmAdminActivityDto), so these matter once it's deleted.
     @Column(name = "event_title", nullable = false, updatable = false)
     private String eventTitle;
 

@@ -7,9 +7,11 @@ import com.feedstartup.model.EpmAdminActivity.Action;
 import com.feedstartup.model.EpmAdminActivity.Field;
 import com.feedstartup.model.EpmEvent;
 import com.feedstartup.repository.EpmAdminActivityRepository;
+import com.feedstartup.repository.EpmEventRepository;
 import com.feedstartup.service.EpmAdminActivityService;
 import com.feedstartup.service.SystemAdminService;
 import com.feedstartup.util.Paging;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class EpmAdminActivityServiceImpl implements EpmAdminActivityService {
@@ -30,10 +34,13 @@ public class EpmAdminActivityServiceImpl implements EpmAdminActivityService {
     private static final Sort NEWEST_FIRST = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.asc("id"));
 
     private final EpmAdminActivityRepository activityRepository;
+    private final EpmEventRepository eventRepository;
     private final SystemAdminService systemAdminService;
 
-    public EpmAdminActivityServiceImpl(EpmAdminActivityRepository activityRepository, SystemAdminService systemAdminService) {
+    public EpmAdminActivityServiceImpl(EpmAdminActivityRepository activityRepository, EpmEventRepository eventRepository,
+                                       SystemAdminService systemAdminService) {
         this.activityRepository = activityRepository;
+        this.eventRepository = eventRepository;
         this.systemAdminService = systemAdminService;
     }
 
@@ -96,8 +103,22 @@ public class EpmAdminActivityServiceImpl implements EpmAdminActivityService {
 
     @Override
     public PageDto<EpmAdminActivityDto> page(Long adminId, String action, LocalDate eventDate, int page, int size) {
-        return PageDto.of(activityRepository.search(adminId, parseAction(action), eventDate, Paging.of(page, size, NEWEST_FIRST)),
-                EpmAdminActivityDto::from);
+        Page<EpmAdminActivity> rows = activityRepository.search(adminId, parseAction(action), eventDate,
+                Paging.of(page, size, NEWEST_FIRST));
+        // An entry keeps the EPM as it stood when it was written, but shows the EPM as it stands now -
+        // so a rescheduled EPM's earlier entries carry its new date, as the EPM Events list does.
+        // A deleted EPM shows as it stood when it was deleted.
+        Set<Long> ids = rows.getContent().stream().map(EpmAdminActivity::getEpmEventId).collect(Collectors.toSet());
+        Map<Long, EpmEvent> current = ids.isEmpty() ? Map.of() : eventRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(EpmEvent::getId, e -> e));
+        List<Long> deletedIds = ids.stream().filter(id -> !current.containsKey(id)).toList();
+        Map<Long, EpmAdminActivity> deletions = deletedIds.isEmpty() ? Map.of()
+                : activityRepository.findByEpmEventIdInAndAction(deletedIds, Action.DELETED).stream()
+                        .collect(Collectors.toMap(EpmAdminActivity::getEpmEventId, a -> a, (first, second) -> second));
+        LocalDate today = LocalDate.now();
+        return PageDto.of(rows, rows.getContent().stream()
+                .map(a -> EpmAdminActivityDto.from(a, current.get(a.getEpmEventId()), deletions.get(a.getEpmEventId()), today))
+                .toList());
     }
 
     @Override

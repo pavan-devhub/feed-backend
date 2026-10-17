@@ -6,7 +6,8 @@ import java.util.Optional;
 /**
  * The fixed set of image sections the admin can manage, across the EPM landing page and the EPM
  * gallery page. Each image's row in {@code epm_gallery_images} names its block; the file itself
- * lives on disk under {@code epm.storage.gallery-dir}/{@code <id>}/ - see EpmGalleryServiceImpl.
+ * lives on disk under {@code epm.storage.gallery-dir}/{@code <id>}/ - except {@link #EPM_CAROUSEL}'s,
+ * which have their own folder, {@code epm.storage.carousel-dir} (see EpmGalleryStorage).
  * <p>
  * {@link #EPM_GALLERY} is also the root of the state -> district -> photo tree behind the gallery
  * page's state cards - see EpmGalleryRegionService. Only its loose photos (not the district ones)

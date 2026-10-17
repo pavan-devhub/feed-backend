@@ -17,13 +17,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * The on-disk half of the EPM gallery: where each image's file lives and how an upload is written
  * there. Which files exist - and everything about them - is the database's job (EpmGalleryImage,
  * EpmGalleryState, EpmGalleryDistrict); this class only ever touches the file a row names.
  * <pre>
- *   &lt;gallery-dir&gt;/&lt;block&gt;/&lt;file&gt;                                   block images
+ *   &lt;carousel-dir&gt;/&lt;file&gt;                                           EPM page carousel photos
+ *   &lt;gallery-dir&gt;/&lt;block&gt;/&lt;file&gt;                                   every other block's images
  *   &lt;gallery-dir&gt;/epm-gallery/&lt;state folder&gt;/&lt;cover file&gt;           state card cover
  *   &lt;gallery-dir&gt;/epm-gallery/&lt;state folder&gt;/&lt;district folder&gt;/&lt;file&gt;  district photos
  * </pre>
@@ -36,6 +38,9 @@ public class EpmGalleryStorage {
     @Value("${epm.storage.gallery-dir}")
     private String galleryDir;
 
+    @Value("${epm.storage.carousel-dir}")
+    private String carouselDir;
+
     /** What was written for an upload - everything the caller needs to fill in the image's row. */
     public record StoredImage(String fileName, String contentType, long size, Integer width, Integer height) {}
 
@@ -43,8 +48,47 @@ public class EpmGalleryStorage {
         return Paths.get(galleryDir).toAbsolutePath().normalize();
     }
 
+    /** The EPM page carousel's own folder, kept apart from the gallery page's folders. */
+    public Path carouselRoot() {
+        return Paths.get(carouselDir).toAbsolutePath().normalize();
+    }
+
     public Path blockDir(String blockId) {
+        if (EpmGalleryBlock.EPM_CAROUSEL.getId().equals(blockId)) {
+            return carouselRoot();
+        }
         return child(root(), blockId);
+    }
+
+    /**
+     * Carousel photos used to be stored in {@code <gallery-dir>/epm-carousel/}; moves any still
+     * there into {@link #carouselRoot()}. Their rows name only the file, so they keep resolving.
+     * A file whose name is already taken in the new folder is left where it is.
+     *
+     * @return how many files were moved
+     */
+    public int moveLegacyCarouselFiles() {
+        Path legacy = child(root(), EpmGalleryBlock.EPM_CAROUSEL.getId());
+        if (!Files.isDirectory(legacy)) return 0;
+        Path target = carouselRoot();
+        int moved = 0;
+        try (Stream<Path> files = Files.list(legacy)) {
+            Files.createDirectories(target);
+            for (Path file : (Iterable<Path>) files.filter(Files::isRegularFile)::iterator) {
+                Path dest = child(target, file.getFileName().toString());
+                if (Files.exists(dest)) continue;
+                Files.move(file, dest);
+                moved++;
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to move the carousel images: " + e.getMessage(), e);
+        }
+        try {
+            Files.deleteIfExists(legacy);
+        } catch (IOException ignored) {
+            // Not empty (a name clash above) - leave it for the admin to sort out.
+        }
+        return moved;
     }
 
     public Path statesRoot() {

@@ -5,7 +5,8 @@ import java.time.LocalDateTime;
 
 /**
  * One EPM image. Only its name and metadata live here - the bytes stay on disk, under
- * {@code <gallery-dir>/<block>/<fileName>} for a block image, or
+ * {@code <gallery-dir>/<block>/<fileName>} for a block image ({@code <carousel-dir>/<fileName>} for
+ * the EPM page carousel's), or
  * {@code <gallery-dir>/epm-gallery/<state folder>/<district folder>/<fileName>} for a district
  * photo (see EpmGalleryDistrict). Every public request reads this table first and only then opens
  * the file it names.

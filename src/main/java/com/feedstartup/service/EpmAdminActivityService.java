@@ -37,8 +37,10 @@ public interface EpmAdminActivityService {
 
     /**
      * A page of entries, newest first - the entries one save wrote stay together, in Field order.
-     * Every filter is optional: {@code action} is a lower-case Action name such as "cancelled",
-     * {@code eventDate} the EPM's date. {@code page} is 0-based.
+     * Each shows its EPM as it stands now (as the EPM Events list does), whether it is upcoming or
+     * previous, and its date as of the entry - see EpmAdminActivityDto. Every filter is optional:
+     * {@code action} is a lower-case Action name such as "cancelled", {@code eventDate} the EPM's
+     * date as it stands now. {@code page} is 0-based.
      */
     PageDto<EpmAdminActivityDto> page(Long adminId, String action, LocalDate eventDate, int page, int size);
 

@@ -27,8 +27,9 @@ public class AdminEpmActivityController {
     }
 
     /**
-     * A page of entries, newest first. Optional filters: {@code adminId}, {@code action} (created,
-     * updated, cancelled, reinstated or deleted) and {@code eventDate} (yyyy-MM-dd, the EPM's date).
+     * A page of entries, newest first, each with its EPM as it stands now. Optional filters:
+     * {@code adminId}, {@code action} (created, updated, cancelled, reinstated or deleted) and
+     * {@code eventDate} (yyyy-MM-dd, the EPM's current date - a rescheduled EPM's whole history).
      */
     @GetMapping
     public ResponseEntity<PageDto<EpmAdminActivityDto>> page(

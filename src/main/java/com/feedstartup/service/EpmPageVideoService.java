@@ -7,7 +7,7 @@ import java.util.Optional;
 
 /**
  * The admin-uploaded video under the navbar at the top of the EPM page. Every read goes to
- * epm_page_videos first and only then to the file its row names in the EPM storage root.
+ * epm_page_videos first and only then to the file its row names in the EPM video folder.
  */
 public interface EpmPageVideoService {
 
@@ -21,4 +21,13 @@ public interface EpmPageVideoService {
 
     /** Removes the uploaded video - the EPM page goes back to its built-in one. */
     void deleteHeroVideo();
+
+    /**
+     * The video used to be stored straight in the EPM folder (the video folder's parent); moves the
+     * file the row names from there into the video folder. The row names only the file, so it
+     * keeps resolving. A one-time step - see EpmDataBootstrapRunner.
+     *
+     * @return whether a file was moved
+     */
+    boolean moveLegacyVideoFile();
 }

@@ -26,7 +26,8 @@ import java.util.stream.Collectors;
 
 /**
  * Database-backed block images: each row in epm_gallery_images names a file under
- * {@code <gallery-dir>/<block>/}. District photos share the table (see EpmGalleryRegionServiceImpl)
+ * {@code <gallery-dir>/<block>/}, or the carousel's own {@code <carousel-dir>/} - EpmGalleryStorage's
+ * blockDir picks the folder. District photos share the table (see EpmGalleryRegionServiceImpl)
  * but are always excluded here by their non-null districtId.
  */
 @Service

@@ -1,18 +1,23 @@
 package com.feedstartup.service.impl;
 
+import com.feedstartup.dto.EpmAdminActivityDto;
+import com.feedstartup.dto.PageDto;
 import com.feedstartup.model.EpmAdminActivity;
 import com.feedstartup.model.EpmAdminActivity.Action;
 import com.feedstartup.model.EpmAdminActivity.Field;
 import com.feedstartup.model.EpmEvent;
 import com.feedstartup.model.SystemAdmin;
 import com.feedstartup.repository.EpmAdminActivityRepository;
+import com.feedstartup.repository.EpmEventRepository;
 import com.feedstartup.service.SystemAdminService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -28,8 +33,10 @@ class EpmAdminActivityServiceImplTest {
     private static final LocalDate EVENT_DATE = LocalDate.of(2026, 10, 15);
 
     private final EpmAdminActivityRepository activityRepository = mock(EpmAdminActivityRepository.class);
+    private final EpmEventRepository eventRepository = mock(EpmEventRepository.class);
     private final SystemAdminService systemAdminService = mock(SystemAdminService.class);
-    private final EpmAdminActivityServiceImpl service = new EpmAdminActivityServiceImpl(activityRepository, systemAdminService);
+    private final EpmAdminActivityServiceImpl service =
+            new EpmAdminActivityServiceImpl(activityRepository, eventRepository, systemAdminService);
 
     private final EpmEvent event = new EpmEvent();
     private final List<EpmAdminActivity> saved = new ArrayList<>();
@@ -127,5 +134,69 @@ class EpmAdminActivityServiceImplTest {
         verify(activityRepository).search(isNull(), eq(Action.REINSTATED), isNull(), any());
 
         assertThrows(IllegalArgumentException.class, () -> service.page(null, "edited", null, 0, 20));
+    }
+
+    @Test
+    void everyEntryOfARescheduledEpmShowsItsCurrentDateAndKeepsTheDateItWasLoggedWith() {
+        LocalDate today = LocalDate.now();
+        event.setEventDate(today.plusDays(10));
+        EpmAdminActivity created = entry(1L, Action.CREATED);
+        event.setEventDate(today.plusDays(20));
+        EpmAdminActivity rescheduled = entry(2L, Action.UPDATED);
+        // Then moved again and renamed - neither of the entries above knows.
+        event.setEventDate(today);
+        event.setTitle("Export Promotion Meeting - Delhi");
+        when(activityRepository.search(isNull(), isNull(), isNull(), any())).thenReturn(new PageImpl<>(List.of(rescheduled, created)));
+        when(eventRepository.findAllById(any())).thenReturn(List.of(event));
+
+        PageDto<EpmAdminActivityDto> page = service.page(null, null, null, 0, 20);
+
+        assertTrue(page.items().stream().allMatch(a -> today.equals(a.eventDate()) && "upcoming".equals(a.eventStatus())
+                && "Export Promotion Meeting - Delhi".equals(a.eventTitle())));
+        assertEquals(today.plusDays(20), page.items().get(0).dateAtAction());
+        assertEquals(today.plusDays(10), page.items().get(1).dateAtAction());
+        verify(activityRepository, never()).findByEpmEventIdInAndAction(any(), any());
+    }
+
+    @Test
+    void anEpmWhoseDateHasPassedIsListedAsPrevious() {
+        EpmAdminActivity created = entry(1L, Action.CREATED);
+        event.setEventDate(LocalDate.now().minusDays(1));
+        event.setCancelled(true);
+        when(activityRepository.search(isNull(), isNull(), isNull(), any())).thenReturn(new PageImpl<>(List.of(created)));
+        when(eventRepository.findAllById(any())).thenReturn(List.of(event));
+
+        EpmAdminActivityDto dto = service.page(null, null, null, 0, 20).items().get(0);
+
+        assertEquals("previous", dto.eventStatus());
+        assertEquals(LocalDate.now().minusDays(1), dto.eventDate());
+        assertTrue(dto.eventCancelled());
+    }
+
+    @Test
+    void aDeletedEpmIsListedAsItStoodWhenItWasDeleted() {
+        EpmAdminActivity created = entry(1L, Action.CREATED);
+        event.setEventDate(EVENT_DATE.plusDays(3));
+        event.setCity("Gurugram");
+        EpmAdminActivity deleted = entry(2L, Action.DELETED);
+        when(activityRepository.search(isNull(), isNull(), isNull(), any())).thenReturn(new PageImpl<>(List.of(created)));
+        when(eventRepository.findAllById(any())).thenReturn(List.of());
+        when(activityRepository.findByEpmEventIdInAndAction(List.of(7L), Action.DELETED)).thenReturn(List.of(deleted));
+
+        EpmAdminActivityDto dto = service.page(null, null, null, 0, 20).items().get(0);
+
+        assertEquals("deleted", dto.eventStatus());
+        assertEquals(EVENT_DATE.plusDays(3), dto.eventDate());
+        assertEquals("Gurugram", dto.eventCity());
+        assertEquals(EVENT_DATE, dto.dateAtAction());
+        assertFalse(dto.eventCancelled());
+    }
+
+    /** A log entry written now, with {@code event} as it currently stands. */
+    private EpmAdminActivity entry(Long id, Action action) {
+        EpmAdminActivity a = new EpmAdminActivity(LocalDateTime.now(), 3L, "ravi", action,
+                action == Action.UPDATED ? Field.DATE : null, event, null, null);
+        ReflectionTestUtils.setField(a, "id", id);
+        return a;
     }
 }

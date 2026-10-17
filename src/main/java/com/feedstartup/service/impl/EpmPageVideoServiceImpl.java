@@ -24,7 +24,7 @@ import java.util.UUID;
 
 /**
  * Database-backed EPM page video: the epm_page_videos row names a file sitting directly in
- * {@code epm.storage.video-dir} (the EPM storage root, e.g. {@code storage/epm/epm-hero-<uuid>.mp4}).
+ * {@code epm.storage.video-dir} (the EPM video folder, e.g. {@code storage/epm/video/epm-hero-<uuid>.mp4}).
  */
 @Service
 public class EpmPageVideoServiceImpl implements EpmPageVideoService {
@@ -102,6 +102,23 @@ public class EpmPageVideoServiceImpl implements EpmPageVideoService {
         deleteQuietly(inRoot(video.getFileName()));
     }
 
+    @Override
+    public boolean moveLegacyVideoFile() {
+        EpmPageVideo video = videoRepository.findById(EpmPageVideo.HERO).orElse(null);
+        Path legacyDir = root().getParent();
+        if (video == null || legacyDir == null) return false;
+        Path target = inRoot(video.getFileName());
+        Path legacy = legacyDir.resolve(target.getFileName());
+        if (Files.exists(target) || !Files.isRegularFile(legacy)) return false;
+        try {
+            Files.createDirectories(root());
+            Files.move(legacy, target);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to move the video: " + e.getMessage(), e);
+        }
+        return true;
+    }
+
     // --- helpers ---------------------------------------------------------------------------
 
     private EpmPageVideo findHeroOrThrow() {
@@ -129,7 +146,7 @@ public class EpmPageVideoServiceImpl implements EpmPageVideoService {
         return Paths.get(videoDir).toAbsolutePath().normalize();
     }
 
-    /** Resolves a file name inside the EPM storage root, refusing anything that would land outside it. */
+    /** Resolves a file name inside the EPM video folder, refusing anything that would land outside it. */
     private Path inRoot(String fileName) {
         Path root = root();
         Path resolved = root.resolve(fileName).normalize();

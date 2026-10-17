@@ -13,21 +13,71 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EpmGalleryStorageTest {
 
+    // Stands in for storage/epm - gallery/ and carousel/ sit side by side inside it.
     @TempDir
-    Path galleryDir;
+    Path epmDir;
 
+    private Path galleryDir;
+    private Path carouselDir;
     private EpmGalleryStorage storage;
 
     @BeforeEach
     void setUp() {
+        galleryDir = epmDir.resolve("gallery");
+        carouselDir = epmDir.resolve("carousel");
         storage = new EpmGalleryStorage();
         ReflectionTestUtils.setField(storage, "galleryDir", galleryDir.toString());
+        ReflectionTestUtils.setField(storage, "carouselDir", carouselDir.toString());
+    }
+
+    @Test
+    void storesCarouselUploadsInTheirOwnFolderBesideTheGallery() throws IOException {
+        MockMultipartFile upload = new MockMultipartFile("file", "slide.png", "image/png", png(30, 20));
+
+        Path dir = storage.blockDir("epm-carousel");
+        EpmGalleryStorage.StoredImage stored = storage.store(upload, dir, null);
+
+        assertEquals(carouselDir.toAbsolutePath().normalize(), dir);
+        assertTrue(Files.isRegularFile(carouselDir.resolve(stored.fileName())));
+        assertFalse(Files.exists(galleryDir.resolve("epm-carousel")));
+        // Every other block still lives inside the gallery folder.
+        assertEquals(galleryDir.toAbsolutePath().normalize().resolve("epm-stats"), storage.blockDir("epm-stats"));
+    }
+
+    @Test
+    void movesCarouselPhotosOutOfTheOldGalleryFolder() throws IOException {
+        Path legacy = Files.createDirectories(galleryDir.resolve("epm-carousel"));
+        Files.write(legacy.resolve("a.png"), new byte[]{1});
+        Files.write(legacy.resolve("b.png"), new byte[]{2});
+
+        assertEquals(2, storage.moveLegacyCarouselFiles());
+
+        assertArrayEquals(new byte[]{1}, Files.readAllBytes(carouselDir.resolve("a.png")));
+        assertArrayEquals(new byte[]{2}, Files.readAllBytes(carouselDir.resolve("b.png")));
+        assertFalse(Files.exists(legacy));
+        // Nothing left to move the second time round.
+        assertEquals(0, storage.moveLegacyCarouselFiles());
+    }
+
+    @Test
+    void neverOverwritesACarouselPhotoWhenMoving() throws IOException {
+        Path legacy = Files.createDirectories(galleryDir.resolve("epm-carousel"));
+        Files.write(legacy.resolve("a.png"), new byte[]{1});
+        Files.createDirectories(carouselDir);
+        Files.write(carouselDir.resolve("a.png"), new byte[]{9});
+
+        assertEquals(0, storage.moveLegacyCarouselFiles());
+
+        assertArrayEquals(new byte[]{9}, Files.readAllBytes(carouselDir.resolve("a.png")));
+        assertTrue(Files.isRegularFile(legacy.resolve("a.png")));
     }
 
     @Test

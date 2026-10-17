@@ -11,6 +11,8 @@ import com.feedstartup.repository.EpmEventRepository;
 import com.feedstartup.repository.EpmReviewRepository;
 import com.feedstartup.repository.EpmVenueRepository;
 import com.feedstartup.service.EpmGalleryImportService;
+import com.feedstartup.service.EpmGalleryStorage;
+import com.feedstartup.service.EpmPageVideoService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -30,8 +32,13 @@ import java.util.Map;
  *   <li>Categories: the five that used to be a hard-coded enum, plus any other name already on an event.</li>
  *   <li>Venues: one per distinct state/district/place/venue already used by an event.</li>
  *   <li>Reviews: the five testimonials that used to be hard-coded on the EPM page.</li>
+ *   <li>Carousel folder: the EPM page carousel's photos move from {@code gallery/epm-carousel/} to
+ *       their own folder ({@code epm.storage.carousel-dir}) - before the import, so a fresh database
+ *       finds them there.</li>
  *   <li>Gallery: every image already in the storage folder gets its database row, and the old JSON
  *       metadata sidecars are folded into those rows and deleted (see EpmGalleryImportServiceImpl).</li>
+ *   <li>Video folder: the EPM page video moves from straight in the EPM folder into its own folder
+ *       ({@code epm.storage.video-dir}).</li>
  * </ol>
  * A step that fails is logged and retried on the next startup instead of stopping the app.
  */
@@ -46,19 +53,25 @@ public class EpmDataBootstrapRunner implements CommandLineRunner {
     private final EpmReviewRepository reviewRepository;
     private final EpmEventRepository eventRepository;
     private final EpmGalleryImportService galleryImportService;
+    private final EpmGalleryStorage galleryStorage;
+    private final EpmPageVideoService pageVideoService;
 
     public EpmDataBootstrapRunner(DataMigrationRepository migrationRepository,
                                   EpmCategoryRepository categoryRepository,
                                   EpmVenueRepository venueRepository,
                                   EpmReviewRepository reviewRepository,
                                   EpmEventRepository eventRepository,
-                                  EpmGalleryImportService galleryImportService) {
+                                  EpmGalleryImportService galleryImportService,
+                                  EpmGalleryStorage galleryStorage,
+                                  EpmPageVideoService pageVideoService) {
         this.migrationRepository = migrationRepository;
         this.categoryRepository = categoryRepository;
         this.venueRepository = venueRepository;
         this.reviewRepository = reviewRepository;
         this.eventRepository = eventRepository;
         this.galleryImportService = galleryImportService;
+        this.galleryStorage = galleryStorage;
+        this.pageVideoService = pageVideoService;
     }
 
     @Override
@@ -66,7 +79,9 @@ public class EpmDataBootstrapRunner implements CommandLineRunner {
         once("epm-categories-seed-v1", this::seedCategories);
         once("epm-venues-seed-v1", this::seedVenues);
         once("epm-reviews-seed-v1", this::seedReviews);
+        once("epm-carousel-folder-v1", this::moveCarouselFolder);
         once("epm-gallery-import-v1", galleryImportService::importFromStorage);
+        once("epm-video-folder-v1", this::moveVideoFolder);
     }
 
     private void once(String id, Runnable step) {
@@ -140,5 +155,18 @@ public class EpmDataBootstrapRunner implements CommandLineRunner {
         }
         reviewRepository.saveAll(reviews);
         log.info("Seeded {} EPM reviews.", reviews.size());
+    }
+
+    private void moveCarouselFolder() {
+        int moved = galleryStorage.moveLegacyCarouselFiles();
+        if (moved > 0) {
+            log.info("Moved {} EPM carousel image(s) into {}.", moved, galleryStorage.carouselRoot());
+        }
+    }
+
+    private void moveVideoFolder() {
+        if (pageVideoService.moveLegacyVideoFile()) {
+            log.info("Moved the EPM page video into its own folder.");
+        }
     }
 }
